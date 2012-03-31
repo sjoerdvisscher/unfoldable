@@ -1,0 +1,27 @@
+Name:                unfoldable
+Version:             0.0.0
+Synopsis:            Class of data structures that can be unfolded from a seed value.
+Homepage:            https://github.com/sjoerdvisscher/unfoldable
+License:             BSD3
+License-file:        LICENSE
+Author:              Sjoerd Visscher
+Maintainer:          sjoerd@w3future.com
+Category:            Generics
+Build-type:          Simple
+Cabal-version:       >=1.2
+
+Library
+  HS-Source-Dirs:  src
+  
+  Exposed-modules:
+    Data.Splittable
+    Data.Unfoldable  
+  
+  Build-depends:
+      base         >= 4   && < 5 
+    , transformers >= 0.2 && < 0.4
+    , random       >= 1.0 && < 1.1
+
+source-repository head
+  type:     git
+  location: git://github.com/sjoerdvisscher/unfoldable.git
