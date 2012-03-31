@@ -1,5 +1,8 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Data.Splittable (
     Splittable(..)
+  
+  , boundedEnum
   
   , Left(..)
   , Right(..)
@@ -9,10 +12,22 @@ module Data.Splittable (
 import qualified System.Random as R
 import Data.List (mapAccumR)
 
+-- | Splittable datatypes are datatypes that can be used as seeds for unfolds.
 class Splittable s where
+  -- | @split n s@ splits the seed @s@ in @n@ seeds. 
   split  :: Int -> s -> [s]
+  -- | @choose fs s@ uses part of the seed @s@ to choose a function from the list @fs@,
+  -- and passes the remainder to that function.
   choose :: [s -> x] -> s -> x
+  -- | Convert the seed value to an @int@.
   getInt :: s -> Int
+
+-- | If a datatype is bounded and enumerable, we can use 'getInt' to produce a value from a seed.
+boundedEnum :: forall s a. (Splittable s, Bounded a, Enum a) => s -> a
+boundedEnum s = toEnum $ (getInt s `mod` (1 + ub - lb)) + lb
+  where 
+    lb = fromEnum (minBound :: a)
+    ub = fromEnum (maxBound :: a)
 
 data Left = L
 instance Splittable Left where

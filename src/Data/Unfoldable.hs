@@ -1,11 +1,15 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 module Data.Unfoldable (
 
     Unfoldable(..)
-  
+
+  -- ** Specific unfolds
+  , unfold
+  , leftMost
+  , rightMost
+
+  -- ** Helper functions
   , spread
   , to
-  , boundedEnum
 
   ) where
     
@@ -13,8 +17,44 @@ import Control.Applicative
 import Control.Monad.Trans.State
 import Data.Splittable
 
+-- | Data structures that can be unfolded.
+--
+-- For example, given a data type
+--
+-- > data Tree a = Empty | Leaf a | Node (Tree a) a (Tree a)
+--
+-- a suitable instance would be
+--
+-- > instance Unfoldable Tree where
+-- >   unfoldMap f = choose
+-- >     [ spread $ pure Empty
+-- >     , spread $ Leaf <$> to f
+-- >     , spread $ Node <$> to (unfoldMap f) <*> to f <*> to (unfoldMap f)
+-- >     ]
+--
+-- i.e. it follows closely the instance for 'Traversable', with the addition of 'choose', 'spread' and 'to'.
+-- 
+-- The instance can be simplified to:
+--
+-- > instance Unfoldable Tree where
+-- >   unfoldMap f = choose
+-- >     [ const Empty
+-- >     , Leaf . f
+-- >     , spread $ Node <$> to (unfoldMap f) <*> to f <*> to (unfoldMap f)
+-- >     ]
 class Unfoldable f where
-  unfold :: Splittable s => (s -> a) -> (s -> f a)
+  -- | Given a function to generate an element from a seed, 
+  -- and an initial seed, generate a structure.
+  unfoldMap :: Splittable s => (s -> a) -> s -> f a
+
+unfold :: (Unfoldable f, Splittable s) => s -> f s
+unfold = unfoldMap id
+
+leftMost :: Unfoldable f => f ()
+leftMost = unfoldMap (const ()) L
+
+rightMost :: Unfoldable f => f ()
+rightMost = unfoldMap (const ()) R
 
 spread :: Splittable s => State ([s], Int) a -> s -> a
 spread f s = let (a, (_, i)) = runState f (split i s, 0) in a
@@ -22,23 +62,17 @@ spread f s = let (a, (_, i)) = runState f (split i s, 0) in a
 to :: (s -> a) -> State ([s], Int) a
 to f = state $ \(ss, i) -> (f (head ss), (tail ss, i + 1))
 
-boundedEnum :: forall s a. (Splittable s, Bounded a, Enum a) => s -> a
-boundedEnum s = toEnum $ (getInt s `mod` (1 + ub - lb)) + lb
-  where 
-    lb = fromEnum (minBound :: a)
-    ub = fromEnum (maxBound :: a)
-
 instance Unfoldable [] where
-  unfold f = go
+  unfoldMap f = go
     where
       go = choose [const [], spread $ (:) <$> to f <*> to go]
 
 instance Unfoldable Maybe where
-  unfold f = choose [const Nothing, Just . f]
+  unfoldMap f = choose [const Nothing, Just . f]
 
 instance (Bounded a, Enum a) => Unfoldable (Either a) where
-  unfold f = choose [Left . boundedEnum, Right . f]
+  unfoldMap f = choose [Left . boundedEnum, Right . f]
 
 instance (Bounded a, Enum a) => Unfoldable ((,) a) where
-  unfold f = spread $ (,) <$> to boundedEnum <*> to f
+  unfoldMap f = spread $ (,) <$> to boundedEnum <*> to f
 
