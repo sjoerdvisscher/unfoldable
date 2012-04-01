@@ -24,10 +24,12 @@ class Splittable s where
 
 -- | If a datatype is bounded and enumerable, we can use 'getInt' to produce a value from a seed.
 boundedEnum :: forall s a. (Splittable s, Bounded a, Enum a) => s -> a
-boundedEnum s = toEnum $ (getInt s `mod` (1 + ub - lb)) + lb
+boundedEnum s = toEnum $ (getInt s `mod'` (1 + ub - lb)) + lb
   where 
     lb = fromEnum (minBound :: a)
     ub = fromEnum (maxBound :: a)
+    n `mod'` 0 = n - lb
+    n `mod'` m = n `mod` m 
 
 data Left = L
 instance Splittable Left where
@@ -39,7 +41,7 @@ data Right = R
 instance Splittable Right where
   split = replicate
   choose fs = last fs
-  getInt R = maxBound
+  getInt R = 0
 
 instance Splittable R.StdGen where
   split 0 _ = []
