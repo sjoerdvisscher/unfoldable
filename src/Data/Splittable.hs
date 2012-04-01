@@ -11,6 +11,7 @@ module Data.Splittable (
 
 import qualified System.Random as R
 import Data.List (mapAccumR)
+import Data.Monoid (Dual(..))
 
 -- | Splittable datatypes are datatypes that can be used as seeds for unfolds.
 class Splittable s where
@@ -74,3 +75,8 @@ instance (Splittable a, Splittable b) => Splittable (Either a b) where
   choose fs = either (choose (map (. Left) fs)) (choose (map (. Right) fs))
   getInt (Left a) = getInt a * 2
   getInt (Right a) = getInt a * 2 + 1
+
+instance Splittable s => Splittable (Dual s) where
+  split n = map Dual . reverse . split n . getDual
+  choose fs = choose (map (. Dual) $ reverse fs) . getDual
+  getInt = negate . getInt . getDual

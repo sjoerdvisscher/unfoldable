@@ -16,6 +16,12 @@ module Data.Unfoldable (
 import Control.Applicative
 import Control.Monad.Trans.State
 import Data.Splittable
+import Data.Monoid (Dual(..))
+import Data.Functor.Compose
+import Data.Functor.Constant
+import Data.Functor.Identity
+import Data.Functor.Product
+import Data.Functor.Reverse
 
 -- | Data structures that can be unfolded.
 --
@@ -76,3 +82,17 @@ instance (Bounded a, Enum a) => Unfoldable (Either a) where
 instance (Bounded a, Enum a) => Unfoldable ((,) a) where
   unfoldMap f = spread $ (,) <$> to boundedEnum <*> to f
 
+instance Unfoldable Identity where
+  unfoldMap f = Identity . f
+
+instance (Bounded a, Enum a) => Unfoldable (Constant a) where
+  unfoldMap _ = Constant . boundedEnum
+  
+instance (Unfoldable p, Unfoldable q) => Unfoldable (Product p q) where
+  unfoldMap f = spread $ Pair <$> to (unfoldMap f) <*> to (unfoldMap f)
+
+instance (Unfoldable p, Unfoldable q) => Unfoldable (Compose p q) where
+  unfoldMap f = Compose . unfoldMap (unfoldMap f)
+
+instance Unfoldable f => Unfoldable (Reverse f) where
+  unfoldMap f = Reverse . unfoldMap (f . getDual) . Dual
