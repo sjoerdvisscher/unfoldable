@@ -33,17 +33,20 @@ boundedEnum s = toEnum $ (getInt s `mod'` (1 + ub - lb)) + lb
     n `mod'` m = n `mod` m 
 
 data Left = L
+-- | Always choose the first item.
 instance Splittable Left where
   split = replicate
   choose fs = head fs
   getInt L = 0
 
 data Right = R
+-- | Always choose the last item.
 instance Splittable Right where
   split = replicate
   choose fs = last fs
   getInt R = 0
 
+-- | Choose randomly
 instance Splittable R.StdGen where
   split 0 _ = []
   split 1 s = [s]
@@ -51,6 +54,8 @@ instance Splittable R.StdGen where
   choose fs s = let (n, s') = R.next s in fs !! (n `mod` length fs) $ s'
   getInt = fst . R.next
 
+-- | The 'Integer' instance uses modulo to choose, and splits breadth-first by 
+-- distributing bits in a round-robin fashion.
 instance Splittable Integer where
   split n t = split' 1 (t, replicate n 0)
     where
@@ -59,23 +64,20 @@ instance Splittable Integer where
   choose fs s = let (s', n) = s `divMod` toInteger (length fs) in fs !! fromInteger n $ s'
   getInt = fromInteger
 
+-- | The @(a, b)@ instance uses only @a@ for 'choose' and @b@ for 'getInt'.
 instance (Splittable a, Splittable b) => Splittable (a, b) where
   split n (a, b) = zip (split n a) (split n b)
   choose = uncurry . choose . map curry
-  getInt (a, b) = go (getInt a) (getInt b)
-    where
-      go 0 0 = 0
-      go m n = go m' n' * 4 + mb * 2 + nb
-        where
-          (m', mb) = m `divMod` 2
-          (n', nb) = n `divMod` 2
+  getInt (_, b) = getInt b
 
+-- | Choose between 2 ways to split and choose.
 instance (Splittable a, Splittable b) => Splittable (Either a b) where
   split n   = either (map Left . split n) (map Right . split n)
   choose fs = either (choose (map (. Left) fs)) (choose (map (. Right) fs))
   getInt (Left a) = getInt a * 2
   getInt (Right a) = getInt a * 2 + 1
 
+-- | Reverse the split output and the choose input.
 instance Splittable s => Splittable (Dual s) where
   split n = map Dual . reverse . split n . getDual
   choose fs = choose (map (. Dual) $ reverse fs) . getDual
