@@ -1,5 +1,5 @@
 Name:                unfoldable
-Version:             0.1.0
+Version:             0.2.0
 Synopsis:            Class of data structures that can be unfolded from a seed value.
 Homepage:            https://github.com/sjoerdvisscher/unfoldable
 License:             BSD3

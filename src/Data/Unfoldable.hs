@@ -53,18 +53,23 @@ class Unfoldable f where
   -- and an initial seed, generate a structure.
   unfoldMap :: Splittable s => (s -> a) -> s -> f a
 
+-- | The same as @unfoldMap id@.
 unfold :: (Unfoldable f, Splittable s) => s -> f s
 unfold = unfoldMap id
 
+-- | Always choose the first constructor.
 leftMost :: Unfoldable f => f ()
 leftMost = unfoldMap (const ()) L
 
+-- | Always choose the last constructor.
 rightMost :: Unfoldable f => f ()
 rightMost = unfoldMap (const ()) R
 
+-- | Count the number of times 'to' is used, and split the seed in that many parts.
 spread :: Splittable s => State ([s], Int) a -> s -> a
 spread f s = let (a, (_, i)) = runState f (split i s, 0) in a
 
+-- | Signal to 'spread' that this is a subpart that needs a seed.
 to :: (s -> a) -> State ([s], Int) a
 to f = state $ \(ss, i) -> (f (head ss), (tail ss, i + 1))
 
