@@ -12,7 +12,6 @@ module Data.Unfolder
   , Left(..)
   , Right(..)
   , Random(..)
-  , FromList(..)
 
   , BFS(..)
   , runBFS
@@ -26,14 +25,18 @@ import Data.Functor.Identity
 import Data.Functor.Product
 import Data.Functor.Compose
 import Data.Functor.Reverse
+import Control.Monad.Trans.Cont
+import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State
 import qualified System.Random as R
-import Data.Foldable (foldMap, asum)
+import Data.Foldable (asum)
 import Data.Maybe (catMaybes)
 
 -- | Unfolders provide a way to unfold data structures. The minimal implementation is 'choose'.
 class Applicative f => Unfolder f where
+  -- | Choose one of the values from the list.
   choose :: [f x] -> f x
+  -- | Given a number 'n', return a number between '0' and 'n - 1'.
   chooseInt :: Int -> f Int
   chooseInt n = choose $ map pure [0 .. n - 1]
 
@@ -62,8 +65,8 @@ instance Unfolder Right where
 
 -- | Don't choose but return all items.
 instance Unfolder [] where
-  chooseInt n = [0 .. n - 1]
   choose = concat
+  chooseInt n = [0 .. n - 1]
 
 fstP :: Product p q a -> p a
 fstP (Pair p _) = p
@@ -83,19 +86,24 @@ instance Unfolder m => Unfolder (Reverse m) where
   chooseInt n = Reverse $ (\x -> n - 1 - x) <$> chooseInt n
   choose = Reverse . choose . reverse . map getReverse
   
+instance (Monad m, Unfolder m) => Unfolder (StateT s m) where
+  choose ms = StateT $ \as -> choose $ map (`runStateT` as) ms
+
+instance Unfolder m => Unfolder (ContT r m) where
+  choose ms = ContT $ \k -> choose $ map (`runContT` k) ms
+
+instance Unfolder m => Unfolder (ReaderT r m) where
+  choose ms = ReaderT $ \r -> choose $ map (`runReaderT` r) ms
+  
 newtype Random g m a = Random { getRandom :: StateT g m a } 
   deriving (Functor, Applicative, Monad)
--- | Choose randomly
+-- | Choose randomly.
 instance (Functor m, Monad m, R.RandomGen g) => Unfolder (Random g m) where
   choose = chooseDefault
   chooseInt n = Random . StateT $ return . R.randomR (0, n - 1)
   
-newtype FromList a x = FromList { getFromList :: StateT [a] [] x } 
-  deriving (Functor, Applicative, Alternative, Monad)
-instance Unfolder (FromList a) where
-  choose ms = FromList . StateT $ \as -> foldMap (flip runStateT as . getFromList) ms
-
-
+-- | Return a generator of values of a given depth.
+--   Returns 'Nothing' if there are no values of that depth or deeper.
 newtype BFS f x = BFS { getBFS :: Int -> Maybe (f x) }
 
 instance Functor f => Functor (BFS f) where 
@@ -107,6 +115,7 @@ instance Alternative f => Applicative (BFS f) where
     [ (<*>) <$> ff i <*> fx d | i <- [0 .. d - 1] ] ++
     [ (<*>) <$> ff d <*> fx i | i <- [0 .. d] ]
 
+-- | Choose between values of a given depth only.
 instance (Alternative f, Unfolder f) => Unfolder (BFS f) where
   choose ms = BFS $ \d -> if d == 0 
     then Just empty

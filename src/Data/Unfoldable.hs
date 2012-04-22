@@ -1,10 +1,11 @@
 module Data.Unfoldable 
   (
+    Unfolder(..)
   
-    Unfoldable(..)
+  , Unfoldable(..)
   , unfold_
   , unfoldBF
-  , Unfolder(..)
+  , unfoldBF_
   
   -- ** Specific unfolds
   , leftMost
@@ -18,6 +19,7 @@ module Data.Unfoldable
   where
     
 import Control.Applicative
+import Control.Monad
 import Data.Unfolder
 import Data.Functor.Compose
 import Data.Functor.Constant
@@ -57,6 +59,10 @@ unfold_ = unfold (pure ())
 unfoldBF :: (Unfoldable t, Unfolder f, Alternative f) => f a -> f (t a)
 unfoldBF = runBFS . unfold . packBFS
 
+-- | Unfold the structure breadth-first, always using '()' as elements.
+unfoldBF_ :: (Unfoldable t, Unfolder f, Alternative f) => f (t ())
+unfoldBF_ = unfoldBF (pure ())
+
 -- | Always choose the first constructor.
 leftMost :: Unfoldable t => t ()
 leftMost = runIdentity $ getL unfold_
@@ -71,17 +77,17 @@ allDepthFirst = unfold_
 
 -- | Generate all the values breadth first.
 allBreadthFirst :: Unfoldable t => [t ()]
-allBreadthFirst = unfoldBF (pure ())
+allBreadthFirst = unfoldBF_
 
 -- | Generate a random value, can be used as default instance for Random.
 randomDefault :: (R.Random a, R.RandomGen g, Unfoldable t) => g -> (t a, g)
 randomDefault = runState . getRandom . unfold . Random . state $ R.random
 
-fromList' :: Unfoldable t => [a] -> [(t a, [a])]
-fromList' as = flip runStateT as . getFromList . unfoldBF . FromList . StateT $ uncons
+fromList' :: (Unfolder f, MonadPlus f, Unfoldable t) => [a] -> f (t a, [a])
+fromList' as = flip runStateT as . unfoldBF . StateT $ uncons
   where
-    uncons [] = []
-    uncons (a:as') = [(a, as')]
+    uncons [] = mzero
+    uncons (a:as') = return (a, as')
 
 -- | Create a data structure using the list as input.
 --   This can fail because there might not be a data structure with the same number
