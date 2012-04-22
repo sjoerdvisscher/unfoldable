@@ -1,27 +1,32 @@
-module Data.Unfoldable (
-
+module Data.Unfoldable 
+  (
+  
     Unfoldable(..)
-
+  , unfold_
+  , unfoldBF
+  , Unfolder(..)
+  
   -- ** Specific unfolds
-  , unfold
   , leftMost
   , rightMost
-
-  -- ** Helper functions
-  , spread
-  , to
-
-  ) where
+  , allDepthFirst
+  , allBreadthFirst
+  , randomDefault
+  , fromList
+  
+  ) 
+  where
     
 import Control.Applicative
-import Control.Monad.Trans.State
-import Data.Splittable
-import Data.Monoid (Dual(..))
+import Data.Unfolder
 import Data.Functor.Compose
 import Data.Functor.Constant
 import Data.Functor.Identity
 import Data.Functor.Product
 import Data.Functor.Reverse
+import Control.Monad.Trans.State
+import qualified System.Random as R
+import Data.Maybe (listToMaybe)
 
 -- | Data structures that can be unfolded.
 --
@@ -32,72 +37,90 @@ import Data.Functor.Reverse
 -- a suitable instance would be
 --
 -- > instance Unfoldable Tree where
--- >   unfoldMap f = choose
--- >     [ spread $ pure Empty
--- >     , spread $ Leaf <$> to f
--- >     , spread $ Node <$> to (unfoldMap f) <*> to f <*> to (unfoldMap f)
+-- >   unfold fa = choose
+-- >     [ pure Empty
+-- >     , Leaf <$> fa
+-- >     , Node <$> unfold fa <*> fa <*> unfold fa
 -- >     ]
 --
--- i.e. it follows closely the instance for 'Traversable', with the addition of 'choose', 'spread' and 'to'.
--- 
--- The instance can be simplified to:
---
--- > instance Unfoldable Tree where
--- >   unfoldMap f = choose
--- >     [ const Empty
--- >     , Leaf . f
--- >     , spread $ Node <$> to (unfoldMap f) <*> to f <*> to (unfoldMap f)
--- >     ]
-class Unfoldable f where
-  -- | Given a function to generate an element from a seed, 
-  -- and an initial seed, generate a structure.
-  unfoldMap :: Splittable s => (s -> a) -> s -> f a
+-- i.e. it follows closely the instance for 'Traversable', but instead of matching on an input value,
+-- we 'choose' from a list of all cases.
+class Unfoldable t where
+  -- | Given a way to generate elements, return a way to generate structures containing those elements.
+  unfold :: Unfolder f => f a -> f (t a)
 
--- | The same as @unfoldMap id@.
-unfold :: (Unfoldable f, Splittable s) => s -> f s
-unfold = unfoldMap id
+-- | Unfold the structure, always using '()' as elements.
+unfold_ :: (Unfoldable t, Unfolder f) => f (t ())
+unfold_ = unfold (pure ())
+
+-- | Breadth-first unfold
+unfoldBF :: (Unfoldable t, Unfolder f, Alternative f) => f a -> f (t a)
+unfoldBF = runBFS . unfold . packBFS
 
 -- | Always choose the first constructor.
-leftMost :: Unfoldable f => f ()
-leftMost = unfoldMap (const ()) L
+leftMost :: Unfoldable t => t ()
+leftMost = runIdentity $ getL unfold_
 
 -- | Always choose the last constructor.
-rightMost :: Unfoldable f => f ()
-rightMost = unfoldMap (const ()) R
+rightMost :: Unfoldable t => t ()
+rightMost = runIdentity $ getR unfold_
 
--- | Count the number of times 'to' is used, and split the seed in that many parts.
-spread :: Splittable s => State ([s], Int) a -> s -> a
-spread f s = let (a, (_, i)) = runState f (split i s, 0) in a
+-- | Generate all the values depth first.
+allDepthFirst :: Unfoldable t => [t ()]
+allDepthFirst = unfold_
 
--- | Signal to 'spread' that this is a subpart that needs a seed.
-to :: (s -> a) -> State ([s], Int) a
-to f = state $ \(ss, i) -> (f (head ss), (tail ss, i + 1))
+-- | Generate all the values breadth first.
+allBreadthFirst :: Unfoldable t => [t ()]
+allBreadthFirst = unfoldBF (pure ())
+
+-- | Generate a random value, can be used as default instance for Random.
+randomDefault :: (R.Random a, R.RandomGen g, Unfoldable t) => g -> (t a, g)
+randomDefault = runState . getRandom . unfold . Random . state $ R.random
+
+fromList' :: Unfoldable t => [a] -> [(t a, [a])]
+fromList' as = flip runStateT as . getFromList . unfoldBF . FromList . StateT $ uncons
+  where
+    uncons [] = []
+    uncons (a:as') = [(a, as')]
+
+-- | Create a data structure using the list as input.
+--   This can fail because there might not be a data structure with the same number
+--   of element positions as the number of elements in the list.
+fromList :: Unfoldable t => [a] -> Maybe (t a)
+fromList as = listToMaybe [ t | (t, []) <- fromList' as ]
 
 instance Unfoldable [] where
-  unfoldMap f = go
-    where
-      go = choose [const [], spread $ (:) <$> to f <*> to go]
+  unfold f = choose 
+    [ pure []
+    , (:) <$> f <*> unfold f
+    ]
 
 instance Unfoldable Maybe where
-  unfoldMap f = choose [const Nothing, Just . f]
+  unfold f = choose 
+    [ pure Nothing
+    , Just <$> f
+    ]
 
 instance (Bounded a, Enum a) => Unfoldable (Either a) where
-  unfoldMap f = choose [Left . boundedEnum, Right . f]
+  unfold f = choose 
+    [ Left <$> boundedEnum
+    , Right <$> f
+    ]
 
 instance (Bounded a, Enum a) => Unfoldable ((,) a) where
-  unfoldMap f = spread $ (,) <$> to boundedEnum <*> to f
+  unfold f = (,) <$> boundedEnum <*> f
 
 instance Unfoldable Identity where
-  unfoldMap f = Identity . f
+  unfold f = Identity <$> f
 
 instance (Bounded a, Enum a) => Unfoldable (Constant a) where
-  unfoldMap _ = Constant . boundedEnum
+  unfold _ = Constant <$> boundedEnum
   
 instance (Unfoldable p, Unfoldable q) => Unfoldable (Product p q) where
-  unfoldMap f = spread $ Pair <$> to (unfoldMap f) <*> to (unfoldMap f)
+  unfold f = Pair <$> unfold f <*> unfold f
 
 instance (Unfoldable p, Unfoldable q) => Unfoldable (Compose p q) where
-  unfoldMap f = Compose . unfoldMap (unfoldMap f)
+  unfold f = Compose <$> unfold (unfold f)
 
 instance Unfoldable f => Unfoldable (Reverse f) where
-  unfoldMap f = Reverse . unfoldMap (f . getDual) . Dual
+  unfold f = Reverse <$> getReverse (unfold (Reverse f))
