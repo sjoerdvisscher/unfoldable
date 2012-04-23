@@ -1,14 +1,23 @@
-Name:                unfoldable
-Version:             0.3.0
-Synopsis:            Class of data structures that can be unfolded from a seed value.
-Homepage:            https://github.com/sjoerdvisscher/unfoldable
-License:             BSD3
-License-file:        LICENSE
-Author:              Sjoerd Visscher
-Maintainer:          sjoerd@w3future.com
-Category:            Generics
-Build-type:          Simple
-Cabal-version:       >= 1.6
+Name:                 unfoldable
+Version:              0.3.0
+Synopsis:             Class of data structures that can be unfolded.
+Description:          Just as there's a Foldable class, there should also be an Unfoldable class. 
+                      This package provides one. Example unfolds are:
+                      .
+                      * Random values
+                      * Enumeration of all values (depth-first or breadth-first)
+                      * Convert from a list
+                      .
+                      The package provides examples in the examples directory.
+Homepage:             https://github.com/sjoerdvisscher/unfoldable
+Bug-reports:          https://github.com/sjoerdvisscher/unfoldable/issues
+License:              BSD3
+License-file:         LICENSE
+Author:               Sjoerd Visscher
+Maintainer:           sjoerd@w3future.com
+Category:             Generics
+Build-type:           Simple
+Cabal-version:        >= 1.6
 
 Library
   HS-Source-Dirs:  src
