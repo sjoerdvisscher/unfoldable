@@ -1,5 +1,6 @@
 import Control.Applicative
 import Data.Unfoldable
+import Data.Unfolder
 
 import Data.Maybe
 import System.Random
@@ -20,4 +21,4 @@ btreeShapes :: [TB ()]
 btreeShapes = take 5 unfold_
 
 randomBTree :: IO (TB Bool)
-randomBTree = getStdRandom randomDefault
+randomBTree = getStdRandom randomValue

@@ -1,25 +1,37 @@
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Data.Unfoldable
+-- Copyright   :  (c) Sjoerd Visscher 2012
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  sjoerd@w3future.com
+-- Stability   :  experimental
+-- Portability :  non-portable
+--
+-- Class of data structures that can be unfolded.
+-----------------------------------------------------------------------------
 module Data.Unfoldable 
   (
-    Unfolder(..)
   
-  , Unfoldable(..)
+  -- * Unfoldable
+    Unfoldable(..)
   , unfold_
   , unfoldBF
   , unfoldBF_
   
   -- ** Specific unfolds
+  , unfoldr
+  , fromList
   , leftMost
   , rightMost
   , allDepthFirst
   , allBreadthFirst
-  , randomDefault
-  , fromList
+  , randomValue
   
   ) 
   where
     
 import Control.Applicative
-import Control.Monad
 import Data.Unfolder
 import Data.Functor.Compose
 import Data.Functor.Constant
@@ -28,7 +40,7 @@ import Data.Functor.Product
 import Data.Functor.Reverse
 import Control.Monad.Trans.State
 import qualified System.Random as R
-import Data.Maybe (listToMaybe)
+import Data.Maybe
 
 -- | Data structures that can be unfolded.
 --
@@ -51,17 +63,35 @@ class Unfoldable t where
   -- | Given a way to generate elements, return a way to generate structures containing those elements.
   unfold :: Unfolder f => f a -> f (t a)
 
--- | Unfold the structure, always using '()' as elements.
+-- | Unfold the structure, always using @()@ as elements.
 unfold_ :: (Unfoldable t, Unfolder f) => f (t ())
 unfold_ = unfold (pure ())
 
--- | Breadth-first unfold
-unfoldBF :: (Unfoldable t, Unfolder f, Alternative f) => f a -> f (t a)
+-- | Breadth-first unfold, which orders the result by the number of 'choose' calls.
+unfoldBF :: (Unfoldable t, Unfolder f) => f a -> f (t a)
 unfoldBF = runBFS . unfold . packBFS
 
--- | Unfold the structure breadth-first, always using '()' as elements.
-unfoldBF_ :: (Unfoldable t, Unfolder f, Alternative f) => f (t ())
+-- | Unfold the structure breadth-first, always using @()@ as elements.
+unfoldBF_ :: (Unfoldable t, Unfolder f) => f (t ())
 unfoldBF_ = unfoldBF (pure ())
+
+-- | @unfoldr@ builds a data structure from a seed value. It can be specified as:
+-- 
+-- > unfoldr f z == fromList (Data.List.unfoldr f z)
+unfoldr :: Unfoldable t => (b -> Maybe (a, b)) -> b -> Maybe (t a)
+unfoldr f z = terminate . flip runStateT z . unfoldBF . StateT $ maybeToList . f
+  where
+    terminate [] = Nothing
+    terminate ((t, b):ts) = if isNothing (f b) then Just t else terminate ts
+
+-- | Create a data structure using the list as input.
+--   This can fail because there might not be a data structure with the same number
+--   of element positions as the number of elements in the list.
+fromList :: Unfoldable t => [a] -> Maybe (t a)
+fromList = unfoldr uncons
+  where
+    uncons [] = Nothing
+    uncons (a:as) = Just (a, as)
 
 -- | Always choose the first constructor.
 leftMost :: Unfoldable t => t ()
@@ -80,20 +110,8 @@ allBreadthFirst :: Unfoldable t => [t ()]
 allBreadthFirst = unfoldBF_
 
 -- | Generate a random value, can be used as default instance for Random.
-randomDefault :: (R.Random a, R.RandomGen g, Unfoldable t) => g -> (t a, g)
-randomDefault = runState . getRandom . unfold . Random . state $ R.random
-
-fromList' :: (Unfolder f, MonadPlus f, Unfoldable t) => [a] -> f (t a, [a])
-fromList' as = flip runStateT as . unfoldBF . StateT $ uncons
-  where
-    uncons [] = mzero
-    uncons (a:as') = return (a, as')
-
--- | Create a data structure using the list as input.
---   This can fail because there might not be a data structure with the same number
---   of element positions as the number of elements in the list.
-fromList :: Unfoldable t => [a] -> Maybe (t a)
-fromList as = listToMaybe [ t | (t, []) <- fromList' as ]
+randomValue :: (R.Random a, R.RandomGen g, Unfoldable t) => g -> (t a, g)
+randomValue = runState . getRandom . unfold . Random . state $ R.random
 
 instance Unfoldable [] where
   unfold f = choose 
