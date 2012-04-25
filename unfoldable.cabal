@@ -22,6 +22,10 @@ Category:             Generics
 Build-type:           Simple
 Cabal-version:        >= 1.6
 
+Extra-Source-Files:
+  examples/*.hs
+  src/Data/Unfolder/Arbitrary.hs
+
 Library
   HS-Source-Dirs:  src
   
