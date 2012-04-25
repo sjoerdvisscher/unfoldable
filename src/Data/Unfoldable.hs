@@ -85,8 +85,8 @@ unfoldr f z = terminate . flip runStateT z . unfoldBF . StateT $ maybeToList . f
     terminate ((t, b):ts) = if isNothing (f b) then Just t else terminate ts
 
 -- | Create a data structure using the list as input.
---   This can fail because there might not be a data structure with the same number
---   of element positions as the number of elements in the list.
+-- This can fail because there might not be a data structure with the same number
+-- of element positions as the number of elements in the list.
 fromList :: Unfoldable t => [a] -> Maybe (t a)
 fromList = unfoldr uncons
   where

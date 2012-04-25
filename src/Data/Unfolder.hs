@@ -43,12 +43,10 @@ import Data.Functor.Identity
 import Data.Functor.Product
 import Data.Functor.Compose
 import Data.Functor.Reverse
-import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State
 import qualified System.Random as R
-import Data.Foldable (asum)
 import Data.Maybe (catMaybes)
 
 -- | Unfolders provide a way to unfold data structures. The minimal implementation is 'choose'.
@@ -61,7 +59,7 @@ class Applicative f => Unfolder f where
 
 -- | If an unfolder is an instance of 'Alternative', 'choose' can be implemented in terms of '<|>'.
 chooseAltDefault :: (Alternative f, Unfolder f) => [f x] -> f x
-chooseAltDefault = foldr1 (<|>)
+chooseAltDefault = foldr (<|>) empty
 
 -- | If an unfolder is monadic, 'choose' can be implemented in terms of 'chooseInt'.
 chooseMonadDefault :: (Monad m, Unfolder m) => [m x] -> m x
