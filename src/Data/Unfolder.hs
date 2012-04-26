@@ -9,8 +9,9 @@
 -- Portability :  non-portable
 --
 -- Unfolders provide a way to unfold data structures.
--- They are applicative functors that can perform a choice.
--- (Which is basically @Alternative@ without @empty@.)
+-- They are basically 'Alternative' instances, but the 'choose' method
+-- allows the unfolder to do something special for the recursive positions
+-- of the data structure.
 -----------------------------------------------------------------------------
 {-# LANGUAGE 
     ScopedTypeVariables
@@ -21,14 +22,12 @@ module Data.Unfolder
   
   -- * Unfolder
     Unfolder(..)
-  , chooseAltDefault
   , chooseMonadDefault
   
   , boundedEnum
   
   -- ** Unfolder instances
-  , Left(..)
-  , Right(..)
+  , DualA(..)
   , Random(..)
 
   , BFS(..)
@@ -39,27 +38,28 @@ module Data.Unfolder
   where 
 
 import Control.Applicative
-import Data.Functor.Identity
+import Control.Monad
+import Control.Arrow (ArrowZero, ArrowPlus)
 import Data.Functor.Product
 import Data.Functor.Compose
 import Data.Functor.Reverse
-import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State
 import qualified System.Random as R
 import Data.Maybe (catMaybes)
+import Data.Foldable (asum)
 
--- | Unfolders provide a way to unfold data structures. The minimal implementation is 'choose'.
-class Applicative f => Unfolder f where
+-- | Unfolders provide a way to unfold data structures.
+-- The methods have default implementations in terms of 'Alternative',
+-- but you can implement 'choose' to act on recursive positions of the
+-- data structure, or simply to provide a faster implementation than 'asum'.
+class Alternative f => Unfolder f where
   -- | Choose one of the values from the list.
   choose :: [f x] -> f x
+  choose = asum
   -- | Given a number 'n', return a number between '0' and 'n - 1'.
   chooseInt :: Int -> f Int
   chooseInt n = choose $ map pure [0 .. n - 1]
-
--- | If an unfolder is an instance of 'Alternative', 'choose' can be implemented in terms of '<|>'.
-chooseAltDefault :: (Alternative f, Unfolder f) => [f x] -> f x
-chooseAltDefault = foldr (<|>) empty
 
 -- | If an unfolder is monadic, 'choose' can be implemented in terms of 'chooseInt'.
 chooseMonadDefault :: (Monad m, Unfolder m) => [m x] -> m x
@@ -72,22 +72,31 @@ boundedEnum = (\x -> toEnum (x + lb)) <$> chooseInt (1 + ub - lb)
     lb = fromEnum (minBound :: a)
     ub = fromEnum (maxBound :: a)
 
-newtype Left x = L { getL :: Identity x } deriving (Functor, Applicative, Monad)
--- | Always choose the first item.
-instance Unfolder Left where
-  choose = head
-  chooseInt _ = pure 0
-
-newtype Right x = R { getR :: Identity x } deriving (Functor, Applicative, Monad)
--- | Always choose the last item.
-instance Unfolder Right where
-  choose = last
-  chooseInt n = pure (n - 1)
+instance MonadPlus m => Unfolder (WrappedMonad m)
+instance (ArrowZero a, ArrowPlus a) => Unfolder (WrappedArrow a b)
 
 -- | Don't choose but return all items.
 instance Unfolder [] where
   choose = concat
   chooseInt n = [0 .. n - 1]
+
+-- | Always choose the first item.
+instance Unfolder Maybe where
+  choose [] = Nothing
+  choose ms = head ms
+  chooseInt 0 = Nothing
+  chooseInt _ = Just 0
+
+-- | 'DualA' flips the '(<|>)' operator.
+newtype DualA f a = DualA { getDualA :: f a }
+  deriving (Functor, Applicative)
+instance Alternative f => Alternative (DualA f) where
+  empty = DualA empty
+  DualA a <|> DualA b = DualA (b <|> a)
+-- | Reverse the list passed to choose.
+instance Unfolder f => Unfolder (DualA f) where
+  choose = DualA . choose . reverse . map getDualA
+  chooseInt n = DualA $ (\x -> n - 1 - x) <$> chooseInt n
 
 fstP :: Product p q a -> p a
 fstP (Pair p _) = p
@@ -104,27 +113,32 @@ instance (Unfolder p, Applicative q) => Unfolder (Compose p q) where
   chooseInt n = Compose $ pure <$> chooseInt n
 
 instance Unfolder m => Unfolder (Reverse m) where
-  choose = Reverse . choose . reverse . map getReverse
-  chooseInt n = Reverse $ (\x -> n - 1 - x) <$> chooseInt n
+  choose = Reverse . choose . map getReverse
+  chooseInt n = Reverse $ chooseInt n
   
-instance (Monad m, Unfolder m) => Unfolder (StateT s m) where
-  choose ms = StateT $ \as -> choose $ map (`runStateT` as) ms
-
-instance Unfolder m => Unfolder (ContT r m) where
-  choose ms = ContT $ \k -> choose $ map (`runContT` k) ms
+instance (MonadPlus m, Unfolder m) => Unfolder (StateT s m) where
+  choose ms = StateT  $ \s -> choose $ map (`runStateT`  s) ms
 
 instance Unfolder m => Unfolder (ReaderT r m) where
   choose ms = ReaderT $ \r -> choose $ map (`runReaderT` r) ms
   
 newtype Random g m a = Random { getRandom :: StateT g m a } 
   deriving (Functor, Applicative, Monad)
+instance (Functor m, Monad m, R.RandomGen g) => Alternative (Random g m) where
+  empty = choose []
+  a <|> b = choose [a, b]
+instance (Functor m, Monad m, R.RandomGen g) => MonadPlus (Random g m) where
+  mzero = choose []
+  mplus a b = choose [a, b]
 -- | Choose randomly.
 instance (Functor m, Monad m, R.RandomGen g) => Unfolder (Random g m) where
   choose = chooseMonadDefault
+  chooseInt 0 = Random . StateT $ const (fail "Random chooseInt 0")
   chooseInt n = Random . StateT $ return . R.randomR (0, n - 1)
 
 -- | Return a generator of values of a given depth.
---   Returns 'Nothing' if there are no values of that depth or deeper.
+-- Returns 'Nothing' if there are no values of that depth or deeper.
+-- The depth is the number of 'choose' calls.
 newtype BFS f x = BFS { getBFS :: Int -> Maybe [f x] }
 
 instance Functor f => Functor (BFS f) where 
@@ -136,6 +150,10 @@ instance Applicative f => Applicative (BFS f) where
     [ liftA2 (liftA2 (<*>)) (ff i) (fx d) | i <- [0 .. d - 1] ] ++
     [ liftA2 (liftA2 (<*>)) (ff d) (fx i) | i <- [0 .. d] ]
 
+instance Applicative f => Alternative (BFS f) where
+  empty = BFS $ \d -> if d == 0 then Just [] else Nothing
+  BFS fa <|> BFS fb = BFS $ \d -> flattenBFS [fa d, fb d]
+  
 -- | Choose between values of a given depth only.
 instance Applicative f => Unfolder (BFS f) where
   choose ms = BFS $ \d -> if d == 0 then Just [] else flattenBFS (map (`getBFS` (d - 1)) ms)

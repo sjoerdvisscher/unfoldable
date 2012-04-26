@@ -94,12 +94,12 @@ fromList = unfoldr uncons
     uncons (a:as) = Just (a, as)
 
 -- | Always choose the first constructor.
-leftMost :: Unfoldable t => t ()
-leftMost = runIdentity $ getL unfold_
+leftMost :: Unfoldable t => Maybe (t ())
+leftMost = unfold_
 
 -- | Always choose the last constructor.
-rightMost :: Unfoldable t => t ()
-rightMost = runIdentity $ getR unfold_
+rightMost :: Unfoldable t => Maybe (t ())
+rightMost = getDualA unfold_
 
 -- | Generate all the values depth first.
 allDepthFirst :: Unfoldable t => [t ()]
@@ -135,16 +135,16 @@ instance (Bounded a, Enum a) => Unfoldable ((,) a) where
   unfold f = (,) <$> boundedEnum <*> f
 
 instance Unfoldable Identity where
-  unfold f = Identity <$> f
+  unfold = fmap Identity
 
 instance (Bounded a, Enum a) => Unfoldable (Constant a) where
-  unfold _ = Constant <$> boundedEnum
+  unfold = fmap Constant . const boundedEnum
   
 instance (Unfoldable p, Unfoldable q) => Unfoldable (Product p q) where
   unfold f = Pair <$> unfold f <*> unfold f
 
 instance (Unfoldable p, Unfoldable q) => Unfoldable (Compose p q) where
-  unfold f = Compose <$> unfold (unfold f)
+  unfold = fmap Compose . unfold . unfold
 
 instance Unfoldable f => Unfoldable (Reverse f) where
-  unfold f = Reverse <$> getReverse (unfold (Reverse f))
+  unfold = fmap Reverse . getDualA . unfold . DualA
