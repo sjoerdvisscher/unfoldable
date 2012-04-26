@@ -22,4 +22,4 @@ treeShapes :: [Tree ()]
 treeShapes = take 10 unfoldBF_
 
 randomTree :: IO (Tree Bool)
-randomTree = getStdRandom randomValue
+randomTree = getStdRandom randomDefault

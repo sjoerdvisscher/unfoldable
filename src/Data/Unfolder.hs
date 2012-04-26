@@ -34,6 +34,9 @@ module Data.Unfolder
   , runBFS
   , packBFS
   
+  , Arb(..)
+  , arbUnit
+  
   ) 
   where 
 
@@ -46,6 +49,8 @@ import Data.Functor.Reverse
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State
 import qualified System.Random as R
+import Test.QuickCheck.Arbitrary (Arbitrary(..))
+import Test.QuickCheck.Gen (Gen(..))
 import Data.Maybe (catMaybes)
 import Data.Foldable (asum)
 
@@ -136,6 +141,7 @@ instance (Functor m, Monad m, R.RandomGen g) => Unfolder (Random g m) where
   chooseInt 0 = Random . StateT $ const (fail "Random chooseInt 0")
   chooseInt n = Random . StateT $ return . R.randomR (0, n - 1)
 
+
 -- | Return a generator of values of a given depth.
 -- Returns 'Nothing' if there are no values of that depth or deeper.
 -- The depth is the number of 'choose' calls.
@@ -168,3 +174,38 @@ flattenBFS :: [Maybe [a]] -> Maybe [a]
 flattenBFS ms = case catMaybes ms of
   [] -> Nothing
   ms' -> Just (concat ms')
+
+
+-- | A variant of Test.QuickCheck.Gen, with failure 
+-- and a count of the number of recursive positions.
+data Arb a = Arb Int (R.StdGen -> Int -> Maybe a)
+
+instance Functor Arb where
+  fmap f (Arb i g) = Arb i $ fmap (fmap (fmap f)) g
+
+instance Applicative Arb where
+  pure = Arb 0 . pure . pure . pure
+  Arb i1 ff <*> Arb i2 fx = Arb (i1 + i2) $
+    \r -> let (r1, r2) = R.split r in liftA2 (<*>) (ff r1) (fx r2)
+
+instance Alternative Arb where
+  empty = Arb 0 (\_ _ -> Nothing)
+  Arb ia fa <|> Arb ib fb = Arb ((ia + ib + 1) `div` 2) $
+    \r n -> let (r1, r2) = R.split r in flattenArb r1 [fa r2 n, fb r2 n]
+
+-- | Limit the depth of the generated data structure by 
+-- dividing the given size by the number of recursive positions.
+instance Unfolder Arb where
+  choose ms = Arb 1 g
+    where
+      g _ 0 = Nothing
+      g r n = let (r1, r2) = R.split r in 
+        flattenArb r1 $ map (\(Arb i f) -> f r2 (n `div` max i 1)) ms
+
+flattenArb :: R.StdGen -> [Maybe a] -> Maybe a
+flattenArb r ms = case catMaybes ms of
+  [] -> Nothing
+  ms' -> Just $ ms' !! fst (R.randomR (0, length ms' - 1) r)
+
+arbUnit :: Arbitrary a => Arb a
+arbUnit = Arb 0 (\r n -> Just $ unGen arbitrary r n)

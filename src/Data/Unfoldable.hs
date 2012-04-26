@@ -26,7 +26,8 @@ module Data.Unfoldable
   , rightMost
   , allDepthFirst
   , allBreadthFirst
-  , randomValue
+  , randomDefault
+  , arbitraryDefault
   
   ) 
   where
@@ -40,6 +41,8 @@ import Data.Functor.Product
 import Data.Functor.Reverse
 import Control.Monad.Trans.State
 import qualified System.Random as R
+import Test.QuickCheck.Arbitrary (Arbitrary(..))
+import Test.QuickCheck.Gen (Gen(..))
 import Data.Maybe
 
 -- | Data structures that can be unfolded.
@@ -109,9 +112,14 @@ allDepthFirst = unfold_
 allBreadthFirst :: Unfoldable t => [t ()]
 allBreadthFirst = unfoldBF_
 
--- | Generate a random value, can be used as default instance for Random.
-randomValue :: (R.Random a, R.RandomGen g, Unfoldable t) => g -> (t a, g)
-randomValue = runState . getRandom . unfold . Random . state $ R.random
+-- | Generate a random value, can be used as default instance for 'R.Random'.
+randomDefault :: (R.Random a, R.RandomGen g, Unfoldable t) => g -> (t a, g)
+randomDefault = runState . getRandom . unfold . Random . state $ R.random
+
+-- | Provides a QuickCheck generator, can be used as default instance for 'Arbitrary'.
+arbitraryDefault :: (Arbitrary a, Unfoldable t) => Gen (t a)
+arbitraryDefault = MkGen $ \r n -> let Arb _ f = unfold arbUnit in 
+  fromMaybe (error "Failed to generate a value.") (f r (n + 1))
 
 instance Unfoldable [] where
   unfold f = choose 

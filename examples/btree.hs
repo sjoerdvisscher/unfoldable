@@ -21,4 +21,4 @@ btreeShapes :: [TB ()]
 btreeShapes = take 5 unfold_
 
 randomBTree :: IO (TB Bool)
-randomBTree = getStdRandom randomValue
+randomBTree = getStdRandom randomDefault
