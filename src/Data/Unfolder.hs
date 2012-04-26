@@ -43,16 +43,28 @@ module Data.Unfolder
 import Control.Applicative
 import Control.Monad
 import Control.Arrow (ArrowZero, ArrowPlus)
+
 import Data.Functor.Product
 import Data.Functor.Compose
 import Data.Functor.Reverse
+import Control.Applicative.Backwards
+import Control.Applicative.Lift
+import Control.Monad.Trans.Error
+import Control.Monad.Trans.List
+import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.RWS
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State
+import Control.Monad.Trans.Writer
+
 import qualified System.Random as R
 import Test.QuickCheck.Arbitrary (Arbitrary(..))
 import Test.QuickCheck.Gen (Gen(..))
-import Data.Maybe (catMaybes)
+
+import Data.Monoid (Monoid)
+import Data.Maybe (catMaybes, listToMaybe)
 import Data.Foldable (asum)
+import Data.Traversable (traverse)
 
 -- | Unfolders provide a way to unfold data structures.
 -- The methods have default implementations in terms of 'Alternative',
@@ -77,7 +89,10 @@ boundedEnum = (\x -> toEnum (x + lb)) <$> chooseInt (1 + ub - lb)
     lb = fromEnum (minBound :: a)
     ub = fromEnum (maxBound :: a)
 
+-- | Derived instance.
 instance MonadPlus m => Unfolder (WrappedMonad m)
+
+-- | Derived instance.
 instance (ArrowZero a, ArrowPlus a) => Unfolder (WrappedArrow a b)
 
 -- | Don't choose but return all items.
@@ -109,24 +124,61 @@ fstP (Pair p _) = p
 sndP :: Product p q a -> q a
 sndP (Pair _ q) = q
 
+-- | Derived instance.
 instance (Unfolder p, Unfolder q) => Unfolder (Product p q) where
   choose ps = Pair (choose $ map fstP ps) (choose $ map sndP ps)
   chooseInt n = Pair (chooseInt n) (chooseInt n)
 
+-- | Derived instance.
 instance (Unfolder p, Applicative q) => Unfolder (Compose p q) where
   choose = Compose . choose . map getCompose
   chooseInt n = Compose $ pure <$> chooseInt n
 
-instance Unfolder m => Unfolder (Reverse m) where
+-- | Derived instance.
+instance Unfolder f => Unfolder (Reverse f) where
   choose = Reverse . choose . map getReverse
   chooseInt n = Reverse $ chooseInt n
-  
-instance (MonadPlus m, Unfolder m) => Unfolder (StateT s m) where
-  choose ms = StateT  $ \s -> choose $ map (`runStateT`  s) ms
 
+-- | Derived instance.
+instance Unfolder f => Unfolder (Backwards f) where
+  choose = Backwards . choose . map forwards
+  chooseInt n = Backwards $ chooseInt n
+
+-- | Derived instance.
+instance Unfolder f => Unfolder (Lift f)
+
+-- | Derived instance.
+instance (Functor m, Monad m, Error e) => Unfolder (ErrorT e m)
+
+-- | Derived instance.
+instance Applicative f => Unfolder (ListT f) where
+  choose ms = ListT $ concat <$> traverse runListT ms
+  chooseInt n = ListT $ pure [0 .. n - 1]
+
+-- | Derived instance.
+instance (Functor m, Monad m) => Unfolder (MaybeT m) where
+  choose ms = MaybeT $ fmap (listToMaybe . catMaybes) (mapM runMaybeT ms)
+  chooseInt 0 = MaybeT $ return Nothing
+  chooseInt _ = MaybeT $ return (Just 0)
+  
+-- | Derived instance.
+instance (Monoid w, MonadPlus m, Unfolder m) => Unfolder (RWST r w s m) where
+  choose ms = RWST $ \r s -> choose $ map (\m -> runRWST m r s) ms
+
+-- | Derived instance.
+instance (MonadPlus m, Unfolder m) => Unfolder (StateT s m) where
+  choose ms = StateT $ \s -> choose $ map (`runStateT` s) ms
+
+-- | Derived instance.
 instance Unfolder m => Unfolder (ReaderT r m) where
   choose ms = ReaderT $ \r -> choose $ map (`runReaderT` r) ms
   
+-- | Derived instance.
+instance (Monoid w, Unfolder m) => Unfolder (WriterT w m) where
+  choose = WriterT . choose . map runWriterT
+
+
+
 newtype Random g m a = Random { getRandom :: StateT g m a } 
   deriving (Functor, Applicative, Monad)
 instance (Functor m, Monad m, R.RandomGen g) => Alternative (Random g m) where
