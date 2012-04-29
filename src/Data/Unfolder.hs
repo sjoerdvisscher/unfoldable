@@ -16,6 +16,7 @@
 {-# LANGUAGE 
     ScopedTypeVariables
   , GeneralizedNewtypeDeriving
+  , RankNTypes
   #-}
 module Data.Unfolder 
   (
@@ -25,6 +26,8 @@ module Data.Unfolder
   , chooseMonadDefault
   
   , boundedEnum
+  
+  , limitDepth
   
   -- ** Unfolder instances
   , DualA(..)
@@ -36,6 +39,8 @@ module Data.Unfolder
   
   , Arb(..)
   , arbUnit
+  
+  , ApplicativeNum(..)
   
   ) 
   where 
@@ -61,7 +66,7 @@ import qualified System.Random as R
 import Test.QuickCheck.Arbitrary (Arbitrary(..))
 import Test.QuickCheck.Gen (Gen(..))
 
-import Data.Monoid (Monoid)
+import Data.Monoid (Monoid(..))
 import Data.Maybe (catMaybes, listToMaybe)
 import Data.Foldable (asum)
 import Data.Traversable (traverse)
@@ -107,7 +112,7 @@ instance Unfolder Maybe where
   chooseInt 0 = Nothing
   chooseInt _ = Just 0
 
--- | 'DualA' flips the '(<|>)' operator.
+-- | 'DualA' flips the '(\<|>)' operator.
 newtype DualA f a = DualA { getDualA :: f a }
   deriving (Functor, Applicative)
 instance Alternative f => Alternative (DualA f) where
@@ -157,7 +162,7 @@ instance Applicative f => Unfolder (ListT f) where
 
 -- | Derived instance.
 instance (Functor m, Monad m) => Unfolder (MaybeT m) where
-  choose ms = MaybeT $ fmap (listToMaybe . catMaybes) (mapM runMaybeT ms)
+  choose ms = MaybeT $ listToMaybe . catMaybes <$> mapM runMaybeT ms
   chooseInt 0 = MaybeT $ return Nothing
   chooseInt _ = MaybeT $ return (Just 0)
   
@@ -193,6 +198,18 @@ instance (Functor m, Monad m, R.RandomGen g) => Unfolder (Random g m) where
   chooseInt 0 = Random . StateT $ const (fail "Random chooseInt 0")
   chooseInt n = Random . StateT $ return . R.randomR (0, n - 1)
 
+
+data NT f g = NT { getNT :: forall a. f a -> g a }
+
+newtype WithRec f a = WithRec { getWithRec :: ReaderT (Int -> NT f f) f a }
+  deriving (Functor, Applicative, Alternative)
+instance Unfolder f => Unfolder (WithRec f) where
+  choose ms = WithRec . ReaderT $ \f -> 
+    getNT (f 0) $ choose (map (\(WithRec (ReaderT m)) -> m (f . succ)) ms)
+
+
+limitDepth :: Unfolder f => Int -> (forall g. Unfolder g => g a) -> f a
+limitDepth m f = runReaderT (getWithRec f) (\d -> NT $ if d == m then const empty else id)
 
 -- | Return a generator of values of a given depth.
 -- Returns 'Nothing' if there are no values of that depth or deeper.
@@ -261,3 +278,17 @@ flattenArb r ms = case catMaybes ms of
 
 arbUnit :: Arbitrary a => Arb a
 arbUnit = Arb 0 (\r n -> Just $ unGen arbitrary r n)
+
+
+newtype ApplicativeNum f a x = ANum { getANum :: f a }
+instance Functor (ApplicativeNum f a) where
+  fmap _ (ANum a) = ANum a
+instance (Applicative f, Num a) => Applicative (ApplicativeNum f a) where
+  pure _ = ANum $ pure 1
+  ANum a <*> ANum b = ANum $ (*) <$> a <*> b
+instance (Applicative f, Num a) => Alternative (ApplicativeNum f a) where
+  empty = ANum $ pure 0
+  ANum a <|> ANum b = ANum $ (+) <$> a <*> b
+instance (Applicative f, Num a) => Unfolder (ApplicativeNum f a) where
+  choose [] = empty
+  choose as = foldr1 (<|>) as
