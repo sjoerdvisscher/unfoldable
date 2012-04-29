@@ -122,37 +122,43 @@ arbitraryDefault = MkGen $ \r n -> let Arb _ f = unfold arbUnit in
   fromMaybe (error "Failed to generate a value.") (f r (n + 1))
 
 instance Unfoldable [] where
-  unfold f = choose 
+  unfold fa = choose 
     [ pure []
-    , (:) <$> f <*> unfold f
+    , (:) <$> fa <*> unfold fa
     ]
 
 instance Unfoldable Maybe where
-  unfold f = choose 
+  unfold fa = choose 
     [ pure Nothing
-    , Just <$> f
+    , Just <$> fa
     ]
 
 instance (Bounded a, Enum a) => Unfoldable (Either a) where
-  unfold f = choose 
+  unfold fa = choose 
     [ Left <$> boundedEnum
-    , Right <$> f
+    , Right <$> fa
     ]
 
 instance (Bounded a, Enum a) => Unfoldable ((,) a) where
-  unfold f = (,) <$> boundedEnum <*> f
+  unfold fa = choose 
+    [ (,) <$> boundedEnum <*> fa ]
 
 instance Unfoldable Identity where
-  unfold = fmap Identity
+  unfold fa = choose 
+    [ Identity <$> fa ]
 
 instance (Bounded a, Enum a) => Unfoldable (Constant a) where
-  unfold = fmap Constant . const boundedEnum
+  unfold _ = choose 
+    [ Constant <$> boundedEnum ]
   
 instance (Unfoldable p, Unfoldable q) => Unfoldable (Product p q) where
-  unfold f = Pair <$> unfold f <*> unfold f
+  unfold fa = choose
+    [ Pair <$> unfold fa <*> unfold fa ]
 
 instance (Unfoldable p, Unfoldable q) => Unfoldable (Compose p q) where
-  unfold = fmap Compose . unfold . unfold
+  unfold fa = choose
+    [ Compose <$> unfold (unfold fa) ]
 
 instance Unfoldable f => Unfoldable (Reverse f) where
-  unfold = fmap Reverse . getDualA . unfold . DualA
+  unfold fa = choose
+    [ Reverse <$> getDualA (unfold (DualA fa)) ]
