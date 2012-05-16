@@ -112,7 +112,7 @@ instance Unfolder Maybe where
   chooseInt 0 = Nothing
   chooseInt _ = Just 0
 
--- | 'DualA' flips the '(\<|>)' operator.
+-- | 'DualA' flips the @\<|>@ operator from `Alternative`.
 newtype DualA f a = DualA { getDualA :: f a }
   deriving (Functor, Applicative)
 instance Alternative f => Alternative (DualA f) where
