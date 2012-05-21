@@ -39,6 +39,7 @@ module Data.Unfolder
   , UnfolderTransformer(..)
   , ala
   , ala2
+  , ala3
   
   -- ** UnfolderTransformer instances
   , DualA(..)
@@ -206,6 +207,10 @@ ala lower f = lower . f . lift
 -- | Run an unfolding function with two arguments using an 'UnfolderTransformer', given a way to run the transformer.
 ala2 :: (UnfolderTransformer t, Unfolder f) => (t f c -> f c) -> (t f a -> t f b -> t f c) -> f a -> f b -> f c
 ala2 lower f = ala lower . f . lift
+
+-- | Run an unfolding function with three arguments using an 'UnfolderTransformer', given a way to run the transformer.
+ala3 :: (UnfolderTransformer t, Unfolder f) => (t f d -> f d) -> (t f a -> t f b -> t f c -> t f d) -> f a -> f b -> f c -> f d
+ala3 lower f = ala2 lower . f . lift
 
 
 -- | 'DualA' flips the @\<|>@ operator from `Alternative`.
