@@ -96,6 +96,7 @@ chooseMonadDefault :: (Monad m, Unfolder m) => [m x] -> m x
 chooseMonadDefault ms = chooseInt (length ms) >>= (ms !!)
 
 -- | If a datatype is bounded and enumerable, we can use 'chooseInt' to generate a value.
+-- This is the function to use if you want to unfold a datatype that has no type arguments (has kind *).
 boundedEnum :: forall f a. (Unfolder f, Bounded a, Enum a) => f a
 boundedEnum = (\x -> toEnum (x + lb)) <$> chooseInt (1 + ub - lb)
   where
@@ -209,7 +210,7 @@ ala2 lower f = ala lower . f . lift
 
 -- | 'DualA' flips the @\<|>@ operator from `Alternative`.
 newtype DualA f a = DualA { getDualA :: f a }
-  deriving (Functor, Applicative)
+  deriving (Eq, Show, Functor, Applicative)
 
 instance Alternative f => Alternative (DualA f) where
   empty = DualA empty
@@ -227,10 +228,6 @@ instance UnfolderTransformer DualA where
 -- | Natural transformations
 data NT f g = NT { getNT :: forall a. f a -> g a }
 
--- | Apply a certain function of type @f a -> f a@ to the result of a 'choose'.
--- The depth is passed as 'Int', so you can apply a different function at each depth.
--- Because of a @forall@, the function needs to be wrapped in a 'NT' constructor.
--- See 'limitDepth' for an example how to use this function.
 newtype WithRec f a = WithRec { getWithRec :: ReaderT (Int -> NT f f) f a }
   deriving (Functor, Applicative, Alternative)
 
@@ -242,6 +239,10 @@ instance Unfolder f => Unfolder (WithRec f) where
 instance UnfolderTransformer WithRec where
   lift = WithRec . ReaderT . const
 
+-- | Apply a certain function of type @f a -> f a@ to the result of a 'choose'.
+-- The depth is passed as 'Int', so you can apply a different function at each depth.
+-- Because of a @forall@, the function needs to be wrapped in a 'NT' constructor.
+-- See 'limitDepth' for an example how to use this function.
 withRec :: (Int -> NT f f) -> WithRec f a -> f a
 withRec f = (`runReaderT` f) . getWithRec
 
