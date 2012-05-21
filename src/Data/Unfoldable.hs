@@ -25,6 +25,7 @@ module Data.Unfoldable
   , leftMost
   , rightMost
   , allDepthFirst
+  , allToDepth
   , allBreadthFirst
   , randomDefault
   , arbitraryDefault
@@ -72,11 +73,11 @@ unfold_ = unfold (pure ())
 
 -- | Breadth-first unfold, which orders the result by the number of 'choose' calls.
 unfoldBF :: (Unfoldable t, Unfolder f) => f a -> f (t a)
-unfoldBF = runBFS . unfold . packBFS
+unfoldBF = ala bfs unfold
 
 -- | Unfold the structure breadth-first, always using @()@ as elements.
 unfoldBF_ :: (Unfoldable t, Unfolder f) => f (t ())
-unfoldBF_ = unfoldBF (pure ())
+unfoldBF_ = bfs unfold_
 
 -- | @unfoldr@ builds a data structure from a seed value. It can be specified as:
 -- 
@@ -104,11 +105,15 @@ leftMost = unfold_
 rightMost :: Unfoldable t => Maybe (t ())
 rightMost = getDualA unfold_
 
--- | Generate all the values depth first.
+-- | Generate all the values depth-first.
 allDepthFirst :: Unfoldable t => [t ()]
 allDepthFirst = unfold_
 
--- | Generate all the values breadth first.
+-- | Generate all the values upto a given depth, depth-first.
+allToDepth :: Unfoldable t => Int -> [t ()]
+allToDepth d = limitDepth d unfold_
+
+-- | Generate all the values breadth-first.
 allBreadthFirst :: Unfoldable t => [t ()]
 allBreadthFirst = unfoldBF_
 

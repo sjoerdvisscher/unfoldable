@@ -27,21 +27,29 @@ module Data.Unfolder
   
   , boundedEnum
   
-  , limitDepth
-  
   -- ** Unfolder instances
-  , DualA(..)
   , Random(..)
 
-  , BFS(..)
-  , runBFS
-  , packBFS
-  
   , Arb(..)
   , arbUnit
   
-  , ApplicativeNum(..)
+  , NumConst(..)
   
+  -- * UnfolderTransformer
+  , UnfolderTransformer(..)
+  , ala
+  , ala2
+  
+  -- ** UnfolderTransformer instances
+  , DualA(..)
+
+  , NT(..)
+  , WithRec(..)
+  , withRec
+  , limitDepth
+  
+  , BFS(..)
+  , bfs
   ) 
   where 
 
@@ -112,26 +120,12 @@ instance Unfolder Maybe where
   chooseInt 0 = Nothing
   chooseInt _ = Just 0
 
--- | 'DualA' flips the @\<|>@ operator from `Alternative`.
-newtype DualA f a = DualA { getDualA :: f a }
-  deriving (Functor, Applicative)
-instance Alternative f => Alternative (DualA f) where
-  empty = DualA empty
-  DualA a <|> DualA b = DualA (b <|> a)
--- | Reverse the list passed to choose.
-instance Unfolder f => Unfolder (DualA f) where
-  choose = DualA . choose . reverse . map getDualA
-  chooseInt n = DualA $ (\x -> n - 1 - x) <$> chooseInt n
-
-fstP :: Product p q a -> p a
-fstP (Pair p _) = p
-
-sndP :: Product p q a -> q a
-sndP (Pair _ q) = q
-
 -- | Derived instance.
 instance (Unfolder p, Unfolder q) => Unfolder (Product p q) where
   choose ps = Pair (choose $ map fstP ps) (choose $ map sndP ps)
+    where
+      fstP (Pair p _) = p
+      sndP (Pair _ q) = q
   chooseInt n = Pair (chooseInt n) (chooseInt n)
 
 -- | Derived instance.
@@ -199,17 +193,63 @@ instance (Functor m, Monad m, R.RandomGen g) => Unfolder (Random g m) where
   chooseInt n = Random . StateT $ return . R.randomR (0, n - 1)
 
 
+-- | An 'UnfolderTransformer' changes the way an 'Unfolder' unfolds. 
+class UnfolderTransformer t where
+  -- | Lift a computation from the argument unfolder to the constructed unfolder.
+  lift :: Unfolder f => f a -> t f a
+
+-- | Run an unfolding function with one argument using an 'UnfolderTransformer', given a way to run the transformer.
+ala :: (UnfolderTransformer t, Unfolder f) => (t f b -> f b) -> (t f a -> t f b) -> f a -> f b
+ala lower f = lower . f . lift
+
+-- | Run an unfolding function with two arguments using an 'UnfolderTransformer', given a way to run the transformer.
+ala2 :: (UnfolderTransformer t, Unfolder f) => (t f c -> f c) -> (t f a -> t f b -> t f c) -> f a -> f b -> f c
+ala2 lower f = ala lower . f . lift
+
+
+-- | 'DualA' flips the @\<|>@ operator from `Alternative`.
+newtype DualA f a = DualA { getDualA :: f a }
+  deriving (Functor, Applicative)
+
+instance Alternative f => Alternative (DualA f) where
+  empty = DualA empty
+  DualA a <|> DualA b = DualA (b <|> a)
+
+-- | Reverse the list passed to choose.
+instance Unfolder f => Unfolder (DualA f) where
+  choose = DualA . choose . reverse . map getDualA
+  chooseInt n = DualA $ (\x -> n - 1 - x) <$> chooseInt n
+
+instance UnfolderTransformer DualA where
+  lift = DualA
+
+
+-- | Natural transformations
 data NT f g = NT { getNT :: forall a. f a -> g a }
 
+-- | Apply a certain function of type @f a -> f a@ to the result of a 'choose'.
+-- The depth is passed as 'Int', so you can apply a different function at each depth.
+-- Because of a @forall@, the function needs to be wrapped in a 'NT' constructor.
+-- See 'limitDepth' for an example how to use this function.
 newtype WithRec f a = WithRec { getWithRec :: ReaderT (Int -> NT f f) f a }
   deriving (Functor, Applicative, Alternative)
+
+-- | Applies a certain function depending on the depth at every recursive position.
 instance Unfolder f => Unfolder (WithRec f) where
   choose ms = WithRec . ReaderT $ \f -> 
     getNT (f 0) $ choose (map (\(WithRec (ReaderT m)) -> m (f . succ)) ms)
 
+instance UnfolderTransformer WithRec where
+  lift = WithRec . ReaderT . const
 
-limitDepth :: Unfolder f => Int -> (forall g. Unfolder g => g a) -> f a
-limitDepth m f = runReaderT (getWithRec f) (\d -> NT $ if d == m then const empty else id)
+withRec :: (Int -> NT f f) -> WithRec f a -> f a
+withRec f = (`runReaderT` f) . getWithRec
+
+-- | Limit the depth of an unfolding.
+limitDepth :: Unfolder f => Int -> WithRec f a -> f a
+limitDepth m = withRec (\d -> NT $ if d == m then const empty else id)
+
+
 
 -- | Return a generator of values of a given depth.
 -- Returns 'Nothing' if there are no values of that depth or deeper.
@@ -233,8 +273,12 @@ instance Applicative f => Alternative (BFS f) where
 instance Applicative f => Unfolder (BFS f) where
   choose ms = BFS $ \d -> if d == 0 then Just [] else flattenBFS (map (`getBFS` (d - 1)) ms)
 
-runBFS :: Unfolder f => BFS f x -> f x
-runBFS (BFS f) = choose (loop 0) where loop d = maybe [] (++ loop (d + 1)) (f d)
+instance UnfolderTransformer BFS where
+  lift = packBFS
+
+-- | Change the order of unfolding to be breadth-first.
+bfs :: Unfolder f => BFS f x -> f x
+bfs (BFS f) = choose (loop 0) where loop d = maybe [] (++ loop (d + 1)) (f d)
 
 packBFS :: f x -> BFS f x
 packBFS r = BFS $ \d -> if d == 0 then Just [r] else Nothing
@@ -279,16 +323,17 @@ flattenArb r ms = case catMaybes ms of
 arbUnit :: Arbitrary a => Arb a
 arbUnit = Arb 0 (\r n -> Just $ unGen arbitrary r n)
 
-
-newtype ApplicativeNum f a x = ANum { getANum :: f a }
-instance Functor (ApplicativeNum f a) where
-  fmap _ (ANum a) = ANum a
-instance (Applicative f, Num a) => Applicative (ApplicativeNum f a) where
-  pure _ = ANum $ pure 1
-  ANum a <*> ANum b = ANum $ (*) <$> a <*> b
-instance (Applicative f, Num a) => Alternative (ApplicativeNum f a) where
-  empty = ANum $ pure 0
-  ANum a <|> ANum b = ANum $ (+) <$> a <*> b
-instance (Applicative f, Num a) => Unfolder (ApplicativeNum f a) where
+-- | Variant of 'Data.Functor.Constant' that does multiplication of the constants for @\<*>@ and addition for @\<|>@.
+newtype NumConst a x = NumConst { getNumConst :: a } deriving (Eq, Show)
+instance Functor (NumConst a) where
+  fmap _ (NumConst a) = NumConst a
+instance Num a => Applicative (NumConst a) where
+  pure _ = NumConst 1
+  NumConst a <*> NumConst b = NumConst $ a * b
+instance Num a => Alternative (NumConst a) where
+  empty = NumConst 0
+  NumConst a <|> NumConst b = NumConst $ a + b
+-- | Unfolds to a constant numeric value. Useful for counting shapes.
+instance Num a => Unfolder (NumConst a) where
   choose [] = empty
   choose as = foldr1 (<|>) as
