@@ -32,6 +32,7 @@ Library
     Data.Unfolder
     Data.Unfoldable
     Data.Biunfoldable
+    Data.Triunfoldable
   
   Build-depends:
       base         >= 4   && < 5 
