@@ -17,6 +17,7 @@
     ScopedTypeVariables
   , GeneralizedNewtypeDeriving
   , RankNTypes
+  , Trustworthy
   #-}
 module Data.Unfolder 
   (

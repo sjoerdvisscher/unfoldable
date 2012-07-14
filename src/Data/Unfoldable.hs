@@ -10,6 +10,7 @@
 --
 -- Class of data structures that can be unfolded.
 -----------------------------------------------------------------------------
+{-# LANGUAGE Safe #-}
 module Data.Unfoldable 
   (
   

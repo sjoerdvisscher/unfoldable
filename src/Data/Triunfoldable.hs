@@ -10,6 +10,7 @@
 --
 -- Class of data structures with 3 type arguments that can be unfolded.
 -----------------------------------------------------------------------------
+{-# LANGUAGE Safe #-}
 module Data.Triunfoldable 
   (
 
