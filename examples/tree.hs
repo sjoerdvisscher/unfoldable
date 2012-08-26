@@ -6,12 +6,11 @@ import Data.Maybe
 import System.Random
 
 
-data Tree a = Empty | Leaf a | Node (Tree a) a (Tree a) deriving Show
+data Tree a = Empty | Node (Tree a) a (Tree a) deriving Show
 
 instance Unfoldable Tree where
   unfold fa = choose
     [ pure Empty
-    , Leaf <$> fa
     , Node <$> unfold fa <*> fa <*> unfold fa
     ]
     
@@ -19,7 +18,10 @@ tree7 :: Tree Int
 tree7 = fromJust $ fromList [0..6]
 
 treeShapes :: [Tree ()]
-treeShapes = take 10 unfoldBF_
+treeShapes = take 20 unfoldBF_
+
+treeShapes' :: [Tree ()]
+treeShapes' = take 20 $ bfsBySum unfold_
 
 randomTree :: IO (Tree Bool)
 randomTree = getStdRandom randomDefault

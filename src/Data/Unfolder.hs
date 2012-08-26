@@ -14,8 +14,7 @@
 -- of the data structure.
 -----------------------------------------------------------------------------
 {-# LANGUAGE 
-    ScopedTypeVariables
-  , GeneralizedNewtypeDeriving
+    GeneralizedNewtypeDeriving
   , RankNTypes
   , Trustworthy
   #-}
@@ -26,7 +25,10 @@ module Data.Unfolder
     Unfolder(..)
   , chooseMonadDefault
   
+  , between
+  , betweenD
   , boundedEnum
+  , boundedEnumD
   
   -- ** Unfolder instances
   , Random(..)
@@ -51,7 +53,9 @@ module Data.Unfolder
   , limitDepth
   
   , BFS(..)
+  , Split
   , bfs
+  , bfsBySum
   ) 
   where 
 
@@ -97,13 +101,31 @@ class Alternative f => Unfolder f where
 chooseMonadDefault :: (Monad m, Unfolder m) => [m x] -> m x
 chooseMonadDefault ms = chooseInt (length ms) >>= (ms !!)
 
--- | If a datatype is bounded and enumerable, we can use 'chooseInt' to generate a value.
--- This is the function to use if you want to unfold a datatype that has no type arguments (has kind *).
-boundedEnum :: forall f a. (Unfolder f, Bounded a, Enum a) => f a
-boundedEnum = (\x -> toEnum (x + lb)) <$> chooseInt (1 + ub - lb)
+-- | If a datatype is enumerable, we can use 'chooseInt' to generate a value.
+-- This is the function to use if you want to unfold a datatype that has no type arguments (has kind @*@).
+between :: (Unfolder f, Enum a) => a -> a -> f a
+between lb ub = (\x -> toEnum (x + fromEnum lb)) <$> chooseInt (1 + fromEnum ub - fromEnum lb)
+
+-- | If a datatype is also bounded, we choose between all possible values.
+--
+-- > boundedEnum = between minBound maxBound
+boundedEnum :: (Unfolder f, Bounded a, Enum a) => f a
+boundedEnum = between minBound maxBound
+
+-- | 'betweenD' uses 'choose' to generate a value. It chooses between the lower bound and one
+--   of the higher values. This means that f.e. breadth-first unfolding and arbitrary will prefer
+--   lower values.
+betweenD :: (Unfolder f, Enum a) => a -> a -> f a
+betweenD lb ub = betweenD' lb (fromEnum ub - fromEnum lb)
   where
-    lb = fromEnum (minBound :: a)
-    ub = fromEnum (maxBound :: a)
+    betweenD' lb n | n < 0 = empty
+                   | otherwise = choose [pure lb, betweenD' (succ lb) (pred n)] 
+
+-- | > boundedEnumD = betweenD minBound maxBound
+boundedEnumD :: (Unfolder f, Bounded a, Enum a) => f a
+boundedEnumD = betweenD minBound maxBound
+
+
 
 -- | Derived instance.
 instance MonadPlus m => Unfolder (WrappedMonad m)
@@ -261,34 +283,48 @@ limitDepth m = withRec (\d -> NT $ if d == m then const empty else id)
 -- | Return a generator of values of a given depth.
 -- Returns 'Nothing' if there are no values of that depth or deeper.
 -- The depth is the number of 'choose' calls.
-newtype BFS f x = BFS { getBFS :: Int -> Maybe [f x] }
+newtype BFS f x = BFS { getBFS :: (Int, Split) -> Maybe [f x] }
+
+type Split = Int -> [(Int, Int)]
 
 instance Functor f => Functor (BFS f) where 
   fmap f = BFS . (fmap (map (fmap f)) .) . getBFS
 
 instance Applicative f => Applicative (BFS f) where
   pure = packBFS . pure
-  BFS ff <*> BFS fx = BFS $ \d -> flattenBFS $
-    [ liftA2 (liftA2 (<*>)) (ff i) (fx d) | i <- [0 .. d - 1] ] ++
-    [ liftA2 (liftA2 (<*>)) (ff d) (fx i) | i <- [0 .. d] ]
+  BFS ff <*> BFS fx = BFS $ \(d, split) -> flattenBFS $
+    [ liftA2 (liftA2 (<*>)) (ff (i, split)) (fx (j, split)) | (i, j) <- split d ]
 
 instance Applicative f => Alternative (BFS f) where
-  empty = BFS $ \d -> if d == 0 then Just [] else Nothing
+  empty = BFS $ \(d, _) -> if d == 0 then Just [] else Nothing
   BFS fa <|> BFS fb = BFS $ \d -> flattenBFS [fa d, fb d]
   
 -- | Choose between values of a given depth only.
 instance Applicative f => Unfolder (BFS f) where
-  choose ms = BFS $ \d -> if d == 0 then Just [] else flattenBFS (map (`getBFS` (d - 1)) ms)
+  choose ms = BFS $ \(d, split) -> if d == 0 then Just [] else flattenBFS (map (`getBFS` (d - 1, split)) ms)
 
 instance UnfolderTransformer BFS where
   lift = packBFS
 
--- | Change the order of unfolding to be breadth-first.
+bySum :: Split
+bySum d = [(i, d - i)| i <- [0 .. d]]
+
+byMax :: Split
+byMax d = [(i, d)| i <- [0 .. d - 1]] ++ [(d, i)| i <- [0 .. d]]
+
+bfsBy :: Unfolder f => Split -> BFS f x -> f x
+bfsBy split (BFS f) = choose (loop 0) where loop d = maybe [] (++ loop (d + 1)) (f (d, split))
+
+-- | Change the order of unfolding to be breadth-first, by maximum depth of the components.
 bfs :: Unfolder f => BFS f x -> f x
-bfs (BFS f) = choose (loop 0) where loop d = maybe [] (++ loop (d + 1)) (f d)
+bfs = bfsBy byMax
+
+-- | Change the order of unfolding to be breadth-first, by the sum of depths of the components.
+bfsBySum :: Unfolder f => BFS f x -> f x
+bfsBySum = bfsBy bySum
 
 packBFS :: f x -> BFS f x
-packBFS r = BFS $ \d -> if d == 0 then Just [r] else Nothing
+packBFS r = BFS $ \(d, _) -> if d == 0 then Just [r] else Nothing
 
 flattenBFS :: [Maybe [a]] -> Maybe [a]
 flattenBFS ms = case catMaybes ms of
