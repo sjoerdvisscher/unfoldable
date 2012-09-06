@@ -10,7 +10,10 @@
 --
 -- Class of data structures that can be unfolded.
 -----------------------------------------------------------------------------
-{-# LANGUAGE Safe #-}
+{-# LANGUAGE CPP, Safe #-}
+#ifdef GENERICS
+{-# LANGUAGE TypeOperators, DefaultSignatures, FlexibleContexts #-}
+#endif
 module Data.Unfoldable 
   (
   
@@ -47,6 +50,10 @@ import Test.QuickCheck.Arbitrary (Arbitrary(..))
 import Test.QuickCheck.Gen (Gen(..))
 import Data.Maybe
 
+#ifdef GENERICS
+import GHC.Generics
+#endif
+
 -- | Data structures that can be unfolded.
 --
 -- For example, given a data type
@@ -64,9 +71,59 @@ import Data.Maybe
 --
 -- i.e. it follows closely the instance for 'Traversable', but instead of matching on an input value,
 -- we 'choose' from a list of all cases.
+--
+-- Instead of manually writing the `Unfoldable` instance, you can add a @deriving@ `Generic1`
+-- to your datatype and declare an `Unfoldable` instance without giving a definition for `unfold`.
+--
+-- For example the previous example can be simplified to just:
+--
+-- > {-# LANGUAGE DeriveGeneric #-}
+-- >
+-- > import GHC.Generics
+-- >
+-- > data Tree a = Empty | Leaf a | Node (Tree a) a (Tree a) deriving Generic1
+-- > 
+-- > instance Unfoldable Tree
 class Unfoldable t where
   -- | Given a way to generate elements, return a way to generate structures containing those elements.
   unfold :: Unfolder f => f a -> f (t a)
+  
+#ifdef GENERICS
+  
+  default unfold :: (Generic1 t, GUnfold (Rep1 t), Unfolder f) => f a -> f (t a)
+  unfold fa = to1 <$> choose (gunfold fa)
+  
+class GUnfold r where
+  gunfold :: Unfolder f => f a -> [f (r a)]
+  
+instance GUnfold V1 where
+  gunfold _ = []
+  
+instance GUnfold U1 where
+  gunfold _ = [pure U1]
+
+instance GUnfold Par1 where
+  gunfold fa = [Par1 <$> fa]
+
+instance Unfoldable f => GUnfold (Rec1 f) where
+  gunfold fa = [Rec1 <$> unfold fa]
+
+instance (Bounded c, Enum c) => GUnfold (K1 i c) where
+  gunfold _ = [K1 <$> boundedEnum]
+
+instance GUnfold f => GUnfold (M1 i c f) where
+  gunfold fa = map (M1 <$>) (gunfold fa)
+  
+instance (GUnfold f, GUnfold g) => GUnfold (f :+: g) where
+  gunfold fa = map (L1 <$>) (gunfold fa) ++ map (R1 <$>) (gunfold fa)
+
+instance (GUnfold f, GUnfold g) => GUnfold (f :*: g) where
+  gunfold fa = liftA2 (:*:) <$> gunfold fa <*> gunfold fa
+
+instance (GUnfold f, GUnfold g) => GUnfold (f :.: g) where
+  gunfold fa = map (Comp1 <$>) (gunfold (choose (gunfold fa)))
+
+#endif
 
 -- | Unfold the structure, always using @()@ as elements.
 unfold_ :: (Unfoldable t, Unfolder f) => f (t ())
