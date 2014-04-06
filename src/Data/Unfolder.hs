@@ -77,8 +77,7 @@ import Control.Monad.Trans.State
 import Control.Monad.Trans.Writer
 
 import qualified System.Random as R
-import Test.QuickCheck.Arbitrary (Arbitrary(..))
-import Test.QuickCheck.Gen (Gen(..))
+import Test.QuickCheck (Arbitrary(..), Gen, oneof, elements, sized, resize)
 
 import Data.Monoid (Monoid(..))
 import Data.Maybe (catMaybes, listToMaybe)
@@ -334,37 +333,35 @@ flattenBFS ms = case catMaybes ms of
 
 -- | A variant of Test.QuickCheck.Gen, with failure 
 -- and a count of the number of recursive positions.
-data Arb a = Arb Int (R.StdGen -> Int -> Maybe a)
+data Arb a = Arb Int (Gen (Maybe a))
 
 instance Functor Arb where
-  fmap f (Arb i g) = Arb i $ fmap (fmap (fmap f)) g
+  fmap f (Arb i g) = Arb i $ fmap (fmap f) g
 
 instance Applicative Arb where
-  pure = Arb 0 . pure . pure . pure
-  Arb i1 ff <*> Arb i2 fx = Arb (i1 + i2) $
-    \r -> let (r1, r2) = R.split r in liftA2 (<*>) (ff r1) (fx r2)
+  pure = Arb 0 . pure . pure
+  Arb i1 ff <*> Arb i2 fx = Arb (i1 + i2) $ liftA2 (<*>) ff fx
 
 instance Alternative Arb where
-  empty = Arb 0 (\_ _ -> Nothing)
-  Arb ia fa <|> Arb ib fb = Arb ((ia + ib + 1) `div` 2) $
-    \r n -> let (r1, r2) = R.split r in flattenArb r1 [fa r2 n, fb r2 n]
+  empty = Arb 0 (pure Nothing)
+  Arb ia fa <|> Arb ib fb = Arb ((ia + ib + 1) `div` 2) $ oneof [fa, fb]
 
 -- | Limit the depth of the generated data structure by 
 -- dividing the given size by the number of recursive positions.
 instance Unfolder Arb where
-  choose ms = Arb 1 g
+  choose ms = Arb 1 $ sized g
     where
-      g _ 0 = Nothing
-      g r n = let (r1, r2) = R.split r in 
-        flattenArb r1 $ map (\(Arb i f) -> f r2 (n `div` max i 1)) ms
+      g 0 = pure Nothing
+      g n = flattenArb $ map (\(Arb i gen) -> resize (n `div` max i 1) gen) ms
 
-flattenArb :: R.StdGen -> [Maybe a] -> Maybe a
-flattenArb r ms = case catMaybes ms of
-  [] -> Nothing
-  ms' -> Just $ ms' !! fst (R.randomR (0, length ms' - 1) r)
+flattenArb :: [Gen (Maybe a)] -> Gen (Maybe a)
+flattenArb = go [] where
+  go [] [] = pure Nothing
+  go as [] = Just <$> elements as
+  go as (g:gs) = g >>= \ma -> go (maybe as (:as) ma) gs
 
 arbUnit :: Arbitrary a => Arb a
-arbUnit = Arb 0 (\r n -> Just $ unGen arbitrary r n)
+arbUnit = Arb 0 (Just <$> arbitrary)
 
 -- | Variant of 'Data.Functor.Constant' that does multiplication of the constants for @\<*>@ and addition for @\<|>@.
 newtype NumConst a x = NumConst { getNumConst :: a } deriving (Eq, Show)

@@ -34,8 +34,7 @@ import Data.Unfolder
 import Data.Functor.Constant
 import Control.Monad.Trans.State
 import qualified System.Random as R
-import Test.QuickCheck.Arbitrary (Arbitrary(..))
-import Test.QuickCheck.Gen (Gen(..))
+import Test.QuickCheck (Arbitrary(..), Gen, sized, resize)
 import Data.Maybe
 
 -- | Data structures with 2 type arguments (kind @* -> * -> *@) that can be unfolded.
@@ -95,8 +94,8 @@ randomDefault = runState . getRandom $ biunfold (Random . state $ R.random) (Ran
 
 -- | Provides a QuickCheck generator, can be used as default instance for 'Arbitrary'.
 arbitraryDefault :: (Arbitrary a, Arbitrary b, Biunfoldable t) => Gen (t a b)
-arbitraryDefault = MkGen $ \r n -> let Arb _ f = biunfold arbUnit arbUnit in 
-  fromMaybe (error "Failed to generate a value.") (f r (n + 1))
+arbitraryDefault = let Arb _ gen = biunfold arbUnit arbUnit in 
+  fromMaybe (error "Failed to generate a value.") <$> sized (\n -> resize (n + 1) gen)
 
 instance Biunfoldable Either where
   biunfold fa fb = choose 

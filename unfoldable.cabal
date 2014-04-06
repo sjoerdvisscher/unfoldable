@@ -1,5 +1,5 @@
 Name:                 unfoldable
-Version:              0.7.2
+Version:              0.8
 Synopsis:             Class of data structures that can be unfolded.
 Description:          Just as there's a Foldable class, there should also be an Unfoldable class. 
                       .
@@ -38,7 +38,7 @@ Library
       base         >= 4   && < 5 
     , transformers >= 0.3 && < 0.4
     , random       >= 1.0 && < 1.1
-    , QuickCheck   >= 2.4 && < 2.8
+    , QuickCheck   >= 2.7.3 && < 2.8
 
   if impl(ghc >= 7.6)
     cpp-options:   -DGENERICS

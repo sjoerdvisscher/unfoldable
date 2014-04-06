@@ -34,8 +34,7 @@ import Data.Unfolder
 import Data.Functor.Constant
 import Control.Monad.Trans.State
 import qualified System.Random as R
-import Test.QuickCheck.Arbitrary (Arbitrary(..))
-import Test.QuickCheck.Gen (Gen(..))
+import Test.QuickCheck (Arbitrary(..), Gen, sized, resize)
 import Data.Maybe
 
 -- | Data structures with 3 type arguments (kind @* -> * -> * -> *@) that can be unfolded.
@@ -98,8 +97,8 @@ randomDefault = runState . getRandom $ triunfold (Random . state $ R.random) (Ra
 
 -- | Provides a QuickCheck generator, can be used as default instance for 'Arbitrary'.
 arbitraryDefault :: (Arbitrary a, Arbitrary b, Arbitrary c, Triunfoldable t) => Gen (t a b c)
-arbitraryDefault = MkGen $ \r n -> let Arb _ f = triunfold arbUnit arbUnit arbUnit in 
-  fromMaybe (error "Failed to generate a value.") (f r (n + 1))
+arbitraryDefault = let Arb _ gen = triunfold arbUnit arbUnit arbUnit in 
+  fromMaybe (error "Failed to generate a value.") <$> sized (\n -> resize (n + 1) gen)
 
 
 curry3 :: ((a,b,c) -> d) -> a -> b -> c -> d
