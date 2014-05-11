@@ -1,7 +1,7 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Unfoldable
--- Copyright   :  (c) Sjoerd Visscher 2012
+-- Copyright   :  (c) Sjoerd Visscher 2014
 -- License     :  BSD-style (see the file LICENSE)
 --
 -- Maintainer  :  sjoerd@w3future.com
@@ -44,6 +44,7 @@ import Data.Functor.Constant
 import Data.Functor.Identity
 import Data.Functor.Product
 import Data.Functor.Reverse
+import Data.Functor.Sum
 import Control.Monad.Trans.State
 import qualified System.Random as R
 import Test.QuickCheck (Arbitrary(..), Gen, sized, resize)
@@ -216,6 +217,12 @@ instance (Bounded a, Enum a) => Unfoldable (Constant a) where
 instance (Unfoldable p, Unfoldable q) => Unfoldable (Product p q) where
   unfold fa = choose
     [ Pair <$> unfold fa <*> unfold fa ]
+
+instance (Unfoldable p, Unfoldable q) => Unfoldable (Sum p q) where
+  unfold fa = choose
+    [ InL <$> unfold fa
+    , InR <$> unfold fa
+    ]
 
 instance (Unfoldable p, Unfoldable q) => Unfoldable (Compose p q) where
   unfold fa = choose

@@ -1,7 +1,7 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Triunfoldable
--- Copyright   :  (c) Sjoerd Visscher 2012
+-- Copyright   :  (c) Sjoerd Visscher 2014
 -- License     :  BSD-style (see the file LICENSE)
 --
 -- Maintainer  :  sjoerd@w3future.com
