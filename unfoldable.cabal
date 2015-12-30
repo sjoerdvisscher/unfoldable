@@ -1,5 +1,5 @@
 Name:                 unfoldable
-Version:              0.8.2
+Version:              0.8.3
 Synopsis:             Class of data structures that can be unfolded.
 Description:          Just as there's a Foldable class, there should also be an Unfoldable class.
                       .
@@ -37,7 +37,7 @@ Library
 
   Build-depends:
       base         >= 4   && < 5
-    , transformers >= 0.4 && < 0.5
+    , transformers >= 0.4 && < 0.6
     , random       >= 1.0 && < 1.2
     , QuickCheck   >= 2.7.3 && < 2.9
 
