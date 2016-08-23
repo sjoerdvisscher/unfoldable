@@ -1,3 +1,7 @@
+0.8.4
+-----
+* updated to `QuickCheck` 2.9
+
 0.8.3
 -----
 * updated to `transformers` 0.5
