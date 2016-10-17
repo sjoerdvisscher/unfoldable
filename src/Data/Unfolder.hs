@@ -175,7 +175,10 @@ instance (Functor m, Monad m, Error e) => Unfolder (ErrorT e m)
 
 -- | Derived instance.
 instance Applicative f => Unfolder (ListT f) where
-  choose ms = ListT $ concat <$> traverse runListT ms
+  {-# INLINABLE choose #-}
+  choose = ListT . foldr appRun (pure [])
+    where
+      appRun x ys = (++) <$> runListT x <*> ys
   chooseInt n = ListT $ pure [0 .. n - 1]
 
 -- | Derived instance.
