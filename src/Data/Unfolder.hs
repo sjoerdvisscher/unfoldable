@@ -147,8 +147,7 @@ instance Unfolder [] where
 
 -- | Always choose the first item.
 instance Unfolder Maybe where
-  choose [] = Nothing
-  choose ms = head ms
+  choose = foldr const Nothing
   chooseInt 0 = Nothing
   chooseInt _ = Just 0
 
@@ -194,7 +193,13 @@ instance Applicative f => Unfolder (ListT f) where
 
 -- | Derived instance.
 instance (Functor m, Monad m) => Unfolder (MaybeT m) where
-  choose ms = MaybeT $ listToMaybe . catMaybes <$> mapM runMaybeT ms
+  choose [] = MaybeT (return Nothing)
+  choose (m : ms) = MaybeT $ do
+    res <- runMaybeT m
+    case res of
+      Nothing -> runMaybeT $ choose ms
+      Just _ -> res <$ mapM_ runMaybeT ms
+
   chooseInt 0 = MaybeT $ return Nothing
   chooseInt _ = MaybeT $ return (Just 0)
   
