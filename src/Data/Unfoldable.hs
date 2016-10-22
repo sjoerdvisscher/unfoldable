@@ -49,6 +49,7 @@ import Control.Monad.Trans.State
 import qualified System.Random as R
 import Test.QuickCheck (Arbitrary(..), Gen, sized, resize)
 import Data.Maybe
+import qualified Data.Sequence as S
 
 #ifdef GENERICS
 import GHC.Generics
@@ -231,3 +232,8 @@ instance (Unfoldable p, Unfoldable q) => Unfoldable (Compose p q) where
 instance Unfoldable f => Unfoldable (Reverse f) where
   unfold fa = choose
     [ Reverse <$> getDualA (unfold (DualA fa)) ]
+
+instance Unfoldable S.Seq where
+  unfold fa = choose
+    [ pure empty
+    , (S.<|) <$> fa <*> unfold fa ]

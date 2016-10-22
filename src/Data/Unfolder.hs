@@ -17,7 +17,13 @@
     GeneralizedNewtypeDeriving
   , RankNTypes
   , Trustworthy
+  , CPP
   #-}
+
+#if !defined(MIN_VERSION_containers)
+#define MIN_VERSION_containers(x,y,z) 0
+#endif
+
 module Data.Unfolder 
   (
   
@@ -81,8 +87,9 @@ import Test.QuickCheck (Arbitrary(..), Gen, oneof, elements, sized, resize)
 
 import Data.Monoid (Monoid(..))
 import Data.Maybe (catMaybes, listToMaybe)
-import Data.Foldable (asum)
+import Data.Foldable (asum, foldl')
 import Data.Traversable (traverse)
+import qualified Data.Sequence as S
 
 -- | Unfolders provide a way to unfold data structures.
 -- The methods have default implementations in terms of 'Alternative',
@@ -380,3 +387,9 @@ instance Num a => Alternative (NumConst a) where
 instance Num a => Unfolder (NumConst a) where
   choose [] = empty
   choose as = foldr1 (<|>) as
+
+instance Unfolder S.Seq where
+  choose = foldl' (<|>) empty
+#if MIN_VERSION_containers(0,5,6)
+  chooseInt n = S.fromFunction n id
+#endif
