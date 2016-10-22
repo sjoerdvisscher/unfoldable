@@ -75,6 +75,7 @@ import Data.Functor.Reverse
 import Control.Applicative.Backwards
 import Control.Applicative.Lift
 import Control.Monad.Trans.Error
+import Control.Monad.Trans.Except
 import Control.Monad.Trans.List
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.RWS
@@ -179,6 +180,9 @@ instance Unfolder f => Unfolder (Lift f)
 
 -- | Derived instance.
 instance (Functor m, Monad m, Error e) => Unfolder (ErrorT e m)
+
+-- | Derived instance.
+instance (Functor m, Monad m, Monoid e) => Unfolder (ExceptT e m)
 
 -- | Derived instance.
 instance Applicative f => Unfolder (ListT f) where
