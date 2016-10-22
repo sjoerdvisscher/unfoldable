@@ -13,7 +13,7 @@
 -- allows the unfolder to do something special for the recursive positions
 -- of the data structure.
 -----------------------------------------------------------------------------
-{-# LANGUAGE 
+{-# LANGUAGE
     GeneralizedNewtypeDeriving
   , RankNTypes
   , Trustworthy
@@ -24,32 +24,33 @@
 #define MIN_VERSION_containers(x,y,z) 0
 #endif
 
-module Data.Unfolder 
+module Data.Unfolder
   (
-  
+
   -- * Unfolder
     Unfolder(..)
   , chooseMonadDefault
-  
+  , chooseMapMonadDefault
+
   , between
   , betweenD
   , boundedEnum
   , boundedEnumD
-  
+
   -- ** Unfolder instances
   , Random(..)
 
   , Arb(..)
   , arbUnit
-  
+
   , NumConst(..)
-  
+
   -- * UnfolderTransformer
   , UnfolderTransformer(..)
   , ala
   , ala2
   , ala3
-  
+
   -- ** UnfolderTransformer instances
   , DualA(..)
 
@@ -57,13 +58,13 @@ module Data.Unfolder
   , WithRec(..)
   , withRec
   , limitDepth
-  
+
   , BFS(..)
   , Split
   , bfs
   , bfsBySum
-  ) 
-  where 
+  )
+  where
 
 import Control.Applicative
 import Control.Monad
@@ -93,19 +94,27 @@ import qualified Data.Sequence as S
 
 -- | Unfolders provide a way to unfold data structures.
 -- The methods have default implementations in terms of 'Alternative',
--- but you can implement 'choose' to act on recursive positions of the
--- data structure, or simply to provide a faster implementation than 'asum'.
+-- but you can implement 'chooseMap' to act on recursive positions of the
+-- data structure, or simply to provide a faster implementation than
+-- 'asum . map f'.
 class Alternative f => Unfolder f where
   -- | Choose one of the values from the list.
-  choose :: [f x] -> f x
-  choose = asum
+  choose :: [f a] -> f a
+  choose = chooseMap id
+  -- | Choose one of the values from the list and apply the given function.
+  chooseMap :: (a -> f b) -> [a] -> f b
+  chooseMap f = asum . map f
   -- | Given a number 'n', return a number between '0' and 'n - 1'.
   chooseInt :: Int -> f Int
-  chooseInt n = choose $ map pure [0 .. n - 1]
+  chooseInt n = chooseMap pure [0 .. n - 1]
 
 -- | If an unfolder is monadic, 'choose' can be implemented in terms of 'chooseInt'.
-chooseMonadDefault :: (Monad m, Unfolder m) => [m x] -> m x
+chooseMonadDefault :: (Monad m, Unfolder m) => [m a] -> m a
 chooseMonadDefault ms = chooseInt (length ms) >>= (ms !!)
+
+-- | If an unfolder is monadic, 'chooseMap' can be implemented in terms of 'chooseInt'.
+chooseMapMonadDefault :: (Monad m, Unfolder m) => (a -> m b) -> [a] -> m b
+chooseMapMonadDefault f as = chooseInt (length as) >>= f . (as !!)
 
 -- | If a datatype is enumerable, we can use 'chooseInt' to generate a value.
 -- This is the function to use if you want to unfold a datatype that has no type arguments (has kind @*@).
@@ -125,7 +134,7 @@ betweenD :: (Unfolder f, Enum a) => a -> a -> f a
 betweenD lb ub = betweenD' lb (fromEnum ub - fromEnum lb)
   where
     betweenD' lb n | n < 0 = empty
-                   | otherwise = choose [pure lb, betweenD' (succ lb) (pred n)] 
+                   | otherwise = choose [pure lb, betweenD' (succ lb) (pred n)]
 
 -- | > boundedEnumD = betweenD minBound maxBound
 boundedEnumD :: (Unfolder f, Bounded a, Enum a) => f a
@@ -142,18 +151,19 @@ instance (ArrowZero a, ArrowPlus a) => Unfolder (WrappedArrow a b)
 -- | Don't choose but return all items.
 instance Unfolder [] where
   choose = concat
+  chooseMap = concatMap
   chooseInt n = [0 .. n - 1]
 
 -- | Always choose the first item.
 instance Unfolder Maybe where
-  choose [] = Nothing
-  choose ms = head ms
+  choose = foldr const Nothing
+  chooseMap f = foldr (const . f) Nothing
   chooseInt 0 = Nothing
   chooseInt _ = Just 0
 
 -- | Derived instance.
 instance (Unfolder p, Unfolder q) => Unfolder (Product p q) where
-  choose ps = Pair (choose $ map fstP ps) (choose $ map sndP ps)
+  chooseMap f as = Pair (chooseMap (fstP . f) as) (chooseMap (sndP . f) as)
     where
       fstP (Pair p _) = p
       sndP (Pair _ q) = q
@@ -161,17 +171,17 @@ instance (Unfolder p, Unfolder q) => Unfolder (Product p q) where
 
 -- | Derived instance.
 instance (Unfolder p, Applicative q) => Unfolder (Compose p q) where
-  choose = Compose . choose . map getCompose
+  chooseMap f = Compose . chooseMap (getCompose . f)
   chooseInt n = Compose $ pure <$> chooseInt n
 
 -- | Derived instance.
 instance Unfolder f => Unfolder (Reverse f) where
-  choose = Reverse . choose . map getReverse
+  chooseMap f = Reverse . chooseMap (getReverse . f)
   chooseInt n = Reverse $ chooseInt n
 
 -- | Derived instance.
 instance Unfolder f => Unfolder (Backwards f) where
-  choose = Backwards . choose . map forwards
+  chooseMap f = Backwards . chooseMap (forwards . f)
   chooseInt n = Backwards $ chooseInt n
 
 -- | Derived instance.
@@ -182,37 +192,42 @@ instance (Functor m, Monad m, Error e) => Unfolder (ErrorT e m)
 
 -- | Derived instance.
 instance Applicative f => Unfolder (ListT f) where
-  {-# INLINABLE choose #-}
-  choose = ListT . foldr appRun (pure [])
+  {-# INLINABLE chooseMap #-}
+  chooseMap f = ListT . foldr appRun (pure [])
     where
-      appRun x ys = (++) <$> runListT x <*> ys
+      appRun x ys = (++) <$> runListT (f x) <*> ys
   chooseInt n = ListT $ pure [0 .. n - 1]
 
 -- | Derived instance.
 instance (Functor m, Monad m) => Unfolder (MaybeT m) where
-  choose ms = MaybeT $ listToMaybe . catMaybes <$> mapM runMaybeT ms
+  chooseMap _ [] = MaybeT (return Nothing)
+  chooseMap f (a : as) = MaybeT $ do
+    res <- runMaybeT (f a)
+    case res of
+      Nothing -> runMaybeT $ chooseMap f as
+      Just _ -> return res
   chooseInt 0 = MaybeT $ return Nothing
   chooseInt _ = MaybeT $ return (Just 0)
-  
+
 -- | Derived instance.
 instance (Monoid w, MonadPlus m, Unfolder m) => Unfolder (RWST r w s m) where
-  choose ms = RWST $ \r s -> choose $ map (\m -> runRWST m r s) ms
+  chooseMap f as = RWST $ \r s -> chooseMap (\a -> runRWST (f a) r s) as
 
 -- | Derived instance.
 instance (MonadPlus m, Unfolder m) => Unfolder (StateT s m) where
-  choose ms = StateT $ \s -> choose $ map (`runStateT` s) ms
+  chooseMap f as = StateT $ \s -> chooseMap (\a -> f a `runStateT` s) as
 
 -- | Derived instance.
 instance Unfolder m => Unfolder (ReaderT r m) where
-  choose ms = ReaderT $ \r -> choose $ map (`runReaderT` r) ms
-  
+  chooseMap f as = ReaderT $ \r -> chooseMap (\a -> f a `runReaderT` r) as
+
 -- | Derived instance.
 instance (Monoid w, Unfolder m) => Unfolder (WriterT w m) where
-  choose = WriterT . choose . map runWriterT
+  chooseMap f = WriterT . chooseMap (runWriterT . f)
 
 
 
-newtype Random g m a = Random { getRandom :: StateT g m a } 
+newtype Random g m a = Random { getRandom :: StateT g m a }
   deriving (Functor, Applicative, Monad)
 instance (Functor m, Monad m, R.RandomGen g) => Alternative (Random g m) where
   empty = choose []
@@ -223,11 +238,12 @@ instance (Functor m, Monad m, R.RandomGen g) => MonadPlus (Random g m) where
 -- | Choose randomly.
 instance (Functor m, Monad m, R.RandomGen g) => Unfolder (Random g m) where
   choose = chooseMonadDefault
+  chooseMap = chooseMapMonadDefault
   chooseInt 0 = Random . StateT $ const (fail "Random chooseInt 0")
   chooseInt n = Random . StateT $ return . R.randomR (0, n - 1)
 
 
--- | An 'UnfolderTransformer' changes the way an 'Unfolder' unfolds. 
+-- | An 'UnfolderTransformer' changes the way an 'Unfolder' unfolds.
 class UnfolderTransformer t where
   -- | Lift a computation from the argument unfolder to the constructed unfolder.
   lift :: Unfolder f => f a -> t f a
@@ -255,7 +271,7 @@ instance Alternative f => Alternative (DualA f) where
 
 -- | Reverse the list passed to choose.
 instance Unfolder f => Unfolder (DualA f) where
-  choose = DualA . choose . reverse . map getDualA
+  chooseMap f = DualA . chooseMap (getDualA . f) . reverse
   chooseInt n = DualA $ (\x -> n - 1 - x) <$> chooseInt n
 
 instance UnfolderTransformer DualA where
@@ -270,8 +286,8 @@ newtype WithRec f a = WithRec { getWithRec :: ReaderT (Int -> NT f f) f a }
 
 -- | Applies a certain function depending on the depth at every recursive position.
 instance Unfolder f => Unfolder (WithRec f) where
-  choose ms = WithRec . ReaderT $ \f -> 
-    getNT (f 0) $ choose (map (\(WithRec (ReaderT m)) -> m (f . succ)) ms)
+  chooseMap h as = WithRec . ReaderT $ \f ->
+    getNT (f 0) $ chooseMap (withRec (f . succ) . h) as
 
 instance UnfolderTransformer WithRec where
   lift = WithRec . ReaderT . const
@@ -296,7 +312,7 @@ newtype BFS f x = BFS { getBFS :: (Int, Split) -> Maybe [f x] }
 
 type Split = Int -> [(Int, Int)]
 
-instance Functor f => Functor (BFS f) where 
+instance Functor f => Functor (BFS f) where
   fmap f = BFS . (fmap (map (fmap f)) .) . getBFS
 
 instance Applicative f => Applicative (BFS f) where
@@ -307,10 +323,10 @@ instance Applicative f => Applicative (BFS f) where
 instance Applicative f => Alternative (BFS f) where
   empty = BFS $ \(d, _) -> if d == 0 then Just [] else Nothing
   BFS fa <|> BFS fb = BFS $ \d -> flattenBFS [fa d, fb d]
-  
+
 -- | Choose between values of a given depth only.
 instance Applicative f => Unfolder (BFS f) where
-  choose ms = BFS $ \(d, split) -> if d == 0 then Just [] else flattenBFS (map (`getBFS` (d - 1, split)) ms)
+  chooseMap f as = BFS $ \(d, split) -> if d == 0 then Just [] else flattenBFS (map (\a -> f a `getBFS` (d - 1, split)) as)
 
 instance UnfolderTransformer BFS where
   lift = packBFS
@@ -341,7 +357,7 @@ flattenBFS ms = case catMaybes ms of
   ms' -> Just (concat ms')
 
 
--- | A variant of Test.QuickCheck.Gen, with failure 
+-- | A variant of Test.QuickCheck.Gen, with failure
 -- and a count of the number of recursive positions.
 data Arb a = Arb Int (Gen (Maybe a))
 
@@ -356,19 +372,19 @@ instance Alternative Arb where
   empty = Arb 0 (pure Nothing)
   Arb ia fa <|> Arb ib fb = Arb ((ia + ib + 1) `div` 2) $ oneof [fa, fb]
 
--- | Limit the depth of the generated data structure by 
+-- | Limit the depth of the generated data structure by
 -- dividing the given size by the number of recursive positions.
 instance Unfolder Arb where
-  choose ms = Arb 1 $ sized g
+  chooseMap f as = Arb 1 $ sized g
     where
       g 0 = pure Nothing
-      g n = flattenArb $ map (\(Arb i gen) -> resize (n `div` max i 1) gen) ms
+      g n = flatMapArb ((\(Arb i gen) -> resize (n `div` max i 1) gen) . f) as
 
-flattenArb :: [Gen (Maybe a)] -> Gen (Maybe a)
-flattenArb = go [] where
+flatMapArb :: (a -> Gen (Maybe b)) -> [a] -> Gen (Maybe b)
+flatMapArb f = go [] where
   go [] [] = pure Nothing
   go as [] = Just <$> elements as
-  go as (g:gs) = g >>= \ma -> go (maybe as (:as) ma) gs
+  go as (g:gs) = f g >>= \ma -> go (maybe as (:as) ma) gs
 
 arbUnit :: Arbitrary a => Arb a
 arbUnit = Arb 0 (Just <$> arbitrary)
@@ -385,11 +401,10 @@ instance Num a => Alternative (NumConst a) where
   NumConst a <|> NumConst b = NumConst $ a + b
 -- | Unfolds to a constant numeric value. Useful for counting shapes.
 instance Num a => Unfolder (NumConst a) where
-  choose [] = empty
-  choose as = foldr1 (<|>) as
+  chooseMap f = foldr ((<|>) . f) empty
 
 instance Unfolder S.Seq where
-  choose = foldl' (<|>) empty
+  chooseMap f = foldr ((<|>) . f) empty
 #if MIN_VERSION_containers(0,5,6)
   chooseInt n = S.fromFunction n id
 #endif

@@ -1,3 +1,9 @@
+0.9
+---
+* added `chooseMap` method
+* added instances from `containers`
+* improved `ListT` instance
+
 0.8.4
 -----
 * updated to `QuickCheck` 2.9
