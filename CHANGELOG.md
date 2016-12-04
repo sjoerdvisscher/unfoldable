@@ -1,3 +1,8 @@
+0.9.1
+-----
+* added `Nth` unfolder
+* added brackets example
+
 0.9
 ---
 * added `chooseMap` method

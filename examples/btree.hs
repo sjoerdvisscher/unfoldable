@@ -1,4 +1,3 @@
-import Control.Applicative
 import Data.Unfoldable
 import Data.Unfolder
 

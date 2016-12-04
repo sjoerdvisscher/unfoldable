@@ -1,5 +1,5 @@
 Name:                 unfoldable
-Version:              0.9
+Version:              0.9.1
 Synopsis:             Class of data structures that can be unfolded.
 Description:          Just as there's a Foldable class, there should also be an Unfoldable class.
                       .

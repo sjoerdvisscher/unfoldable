@@ -10,19 +10,19 @@
 --
 -- Class of data structures that can be unfolded.
 -----------------------------------------------------------------------------
-{-# LANGUAGE CPP, Safe #-}
+{-# LANGUAGE CPP, Safe, TupleSections #-}
 #ifdef GENERICS
 {-# LANGUAGE TypeOperators, DefaultSignatures, FlexibleContexts #-}
 #endif
-module Data.Unfoldable 
+module Data.Unfoldable
   (
-  
+
   -- * Unfoldable
     Unfoldable(..)
   , unfold_
   , unfoldBF
   , unfoldBF_
-  
+
   -- ** Specific unfolds
   , unfoldr
   , fromList
@@ -33,10 +33,10 @@ module Data.Unfoldable
   , allBreadthFirst
   , randomDefault
   , arbitraryDefault
-  
-  ) 
+
+  )
   where
-    
+
 import Control.Applicative
 import Data.Unfolder
 import Data.Functor.Compose
@@ -50,6 +50,7 @@ import qualified System.Random as R
 import Test.QuickCheck (Arbitrary(..), Gen, sized, resize)
 import Data.Maybe
 import qualified Data.Sequence as S
+import qualified Data.Tree as T
 
 #ifdef GENERICS
 import GHC.Generics
@@ -83,23 +84,23 @@ import GHC.Generics
 -- > import GHC.Generics
 -- >
 -- > data Tree a = Empty | Leaf a | Node (Tree a) a (Tree a) deriving Generic1
--- > 
+-- >
 -- > instance Unfoldable Tree
 class Unfoldable t where
   -- | Given a way to generate elements, return a way to generate structures containing those elements.
   unfold :: Unfolder f => f a -> f (t a)
-  
+
 #ifdef GENERICS
-  
+
   default unfold :: (Generic1 t, GUnfold (Rep1 t), Unfolder f) => f a -> f (t a)
   unfold fa = to1 <$> choose (gunfold fa)
-  
+
 class GUnfold r where
   gunfold :: Unfolder f => f a -> [f (r a)]
-  
+
 instance GUnfold V1 where
   gunfold _ = []
-  
+
 instance GUnfold U1 where
   gunfold _ = [pure U1]
 
@@ -114,7 +115,7 @@ instance (Bounded c, Enum c) => GUnfold (K1 i c) where
 
 instance GUnfold f => GUnfold (M1 i c f) where
   gunfold fa = map (M1 <$>) (gunfold fa)
-  
+
 instance (GUnfold f, GUnfold g) => GUnfold (f :+: g) where
   gunfold fa = map (L1 <$>) (gunfold fa) ++ map (R1 <$>) (gunfold fa)
 
@@ -139,7 +140,7 @@ unfoldBF_ :: (Unfoldable t, Unfolder f) => f (t ())
 unfoldBF_ = bfs unfold_
 
 -- | @unfoldr@ builds a data structure from a seed value. It can be specified as:
--- 
+--
 -- > unfoldr f z == fromList (Data.List.unfoldr f z)
 unfoldr :: Unfoldable t => (b -> Maybe (a, b)) -> b -> Maybe (t a)
 unfoldr f z = terminate . flip runStateT z . unfoldBF . StateT $ maybeToList . f
@@ -182,39 +183,39 @@ randomDefault = runState . getRandom . unfold . Random . state $ R.random
 
 -- | Provides a QuickCheck generator, can be used as default instance for 'Arbitrary'.
 arbitraryDefault :: (Arbitrary a, Unfoldable t) => Gen (t a)
-arbitraryDefault = let Arb _ gen = unfold arbUnit in 
+arbitraryDefault = let Arb _ gen = unfold arbUnit in
   fromMaybe (error "Failed to generate a value.") <$> sized (\n -> resize (n + 1) gen)
 
 instance Unfoldable [] where
-  unfold fa = choose 
-    [ pure []
-    , (:) <$> fa <*> unfold fa
-    ]
+  unfold fa = go where
+    go = choose
+      [ pure []
+      , (:) <$> fa <*> go ]
 
 instance Unfoldable Maybe where
-  unfold fa = choose 
+  unfold fa = choose
     [ pure Nothing
     , Just <$> fa
     ]
 
 instance (Bounded a, Enum a) => Unfoldable (Either a) where
-  unfold fa = choose 
+  unfold fa = choose
     [ Left <$> boundedEnum
     , Right <$> fa
     ]
 
 instance (Bounded a, Enum a) => Unfoldable ((,) a) where
-  unfold fa = choose 
+  unfold fa = choose
     [ (,) <$> boundedEnum <*> fa ]
 
 instance Unfoldable Identity where
-  unfold fa = choose 
+  unfold fa = choose
     [ Identity <$> fa ]
 
 instance (Bounded a, Enum a) => Unfoldable (Constant a) where
-  unfold _ = choose 
+  unfold _ = choose
     [ Constant <$> boundedEnum ]
-  
+
 instance (Unfoldable p, Unfoldable q) => Unfoldable (Product p q) where
   unfold fa = choose
     [ Pair <$> unfold fa <*> unfold fa ]
@@ -234,6 +235,11 @@ instance Unfoldable f => Unfoldable (Reverse f) where
     [ Reverse <$> getDualA (unfold (DualA fa)) ]
 
 instance Unfoldable S.Seq where
-  unfold fa = choose
-    [ pure empty
-    , (S.<|) <$> fa <*> unfold fa ]
+  unfold fa = go where
+    go = choose
+      [ pure empty
+      , (S.<|) <$> fa <*> go ]
+
+instance Unfoldable T.Tree where
+  unfold fa = go where
+    go = choose [ T.Node <$> fa <*> unfold go ]

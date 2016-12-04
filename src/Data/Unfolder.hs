@@ -44,6 +44,7 @@ module Data.Unfolder
   , arbUnit
 
   , NumConst(..)
+  , Nth(..)
 
   -- * UnfolderTransformer
   , UnfolderTransformer(..)
@@ -75,7 +76,6 @@ import Data.Functor.Compose
 import Data.Functor.Reverse
 import Control.Applicative.Backwards
 import Control.Applicative.Lift
-import Control.Monad.Trans.Error
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.List
 import Control.Monad.Trans.Maybe
@@ -88,23 +88,21 @@ import qualified System.Random as R
 import Test.QuickCheck (Arbitrary(..), Gen, oneof, elements, sized, resize)
 
 import Data.Monoid (Monoid(..))
-import Data.Maybe (catMaybes, listToMaybe)
-import Data.Foldable (asum, foldl')
-import Data.Traversable (traverse)
+import Data.Maybe (catMaybes)
 import qualified Data.Sequence as S
 
 -- | Unfolders provide a way to unfold data structures.
 -- The methods have default implementations in terms of 'Alternative',
 -- but you can implement 'chooseMap' to act on recursive positions of the
 -- data structure, or simply to provide a faster implementation than
--- 'asum . map f'.
+-- 'foldr ((<|>) . f) empty'.
 class Alternative f => Unfolder f where
   -- | Choose one of the values from the list.
   choose :: [f a] -> f a
   choose = chooseMap id
   -- | Choose one of the values from the list and apply the given function.
   chooseMap :: (a -> f b) -> [a] -> f b
-  chooseMap f = asum . map f
+  chooseMap f = foldr ((<|>) . f) empty
   -- | Given a number 'n', return a number between '0' and 'n - 1'.
   chooseInt :: Int -> f Int
   chooseInt n = chooseMap pure [0 .. n - 1]
@@ -132,7 +130,7 @@ boundedEnum = between minBound maxBound
 --   of the higher values. This means that f.e. breadth-first unfolding and arbitrary will prefer
 --   lower values.
 betweenD :: (Unfolder f, Enum a) => a -> a -> f a
-betweenD lb ub = betweenD' lb (fromEnum ub - fromEnum lb)
+betweenD lb0 ub = betweenD' lb0 (fromEnum ub - fromEnum lb0)
   where
     betweenD' lb n | n < 0 = empty
                    | otherwise = choose [pure lb, betweenD' (succ lb) (pred n)]
@@ -189,9 +187,6 @@ instance Unfolder f => Unfolder (Backwards f) where
 instance Unfolder f => Unfolder (Lift f)
 
 -- | Derived instance.
-instance (Functor m, Monad m, Error e) => Unfolder (ErrorT e m)
-
--- | Derived instance.
 instance (Functor m, Monad m, Monoid e) => Unfolder (ExceptT e m)
 
 -- | Derived instance.
@@ -229,6 +224,11 @@ instance Unfolder m => Unfolder (ReaderT r m) where
 instance (Monoid w, Unfolder m) => Unfolder (WriterT w m) where
   chooseMap f = WriterT . chooseMap (runWriterT . f)
 
+-- | Don't choose but return all items.
+instance Unfolder S.Seq where
+#if MIN_VERSION_containers(0,5,6)
+  chooseInt n = S.fromFunction n id
+#endif
 
 
 newtype Random g m a = Random { getRandom :: StateT g m a }
@@ -245,6 +245,24 @@ instance (Functor m, Monad m, R.RandomGen g) => Unfolder (Random g m) where
   chooseMap = chooseMapMonadDefault
   chooseInt 0 = Random . StateT $ const (fail "Random chooseInt 0")
   chooseInt n = Random . StateT $ return . R.randomR (0, n - 1)
+
+
+data Nth a = Nth
+  { size :: Integer
+  , getNth :: Integer -> a
+  }
+instance Functor Nth where
+  fmap f (Nth sizeA as) = Nth sizeA (f . as)
+instance Applicative Nth where
+  pure a = Nth 1 (const a)
+  Nth sizeF fs <*> Nth sizeA as = Nth (sizeF * sizeA) $ \n ->
+    let (l, r) = n `divMod` sizeA in fs l (as r)
+instance Alternative Nth where
+  empty = Nth 0 (const undefined)
+  Nth sizeA as <|> Nth sizeB bs = Nth (sizeA + sizeB) $ \n ->
+    if n < sizeA then as n else bs (n - sizeA)
+instance Unfolder Nth where
+  chooseInt n = Nth (toInteger n) fromInteger
 
 
 -- | An 'UnfolderTransformer' changes the way an 'Unfolder' unfolds.
@@ -404,11 +422,4 @@ instance Num a => Alternative (NumConst a) where
   empty = NumConst 0
   NumConst a <|> NumConst b = NumConst $ a + b
 -- | Unfolds to a constant numeric value. Useful for counting shapes.
-instance Num a => Unfolder (NumConst a) where
-  chooseMap f = foldr ((<|>) . f) empty
-
-instance Unfolder S.Seq where
-  chooseMap f = foldr ((<|>) . f) empty
-#if MIN_VERSION_containers(0,5,6)
-  chooseInt n = S.fromFunction n id
-#endif
+instance Num a => Unfolder (NumConst a)
