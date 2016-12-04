@@ -3,10 +3,10 @@ import Data.Unfolder
 import Data.MemoTrie (memo2)
 import Control.Applicative
 
-enumBrackets :: Unfolder f => Int -> f String
+enumBrackets :: Alternative f => Int -> f String
 enumBrackets n = enumBracketsTail n 0
 
-enumBracketsTail :: Unfolder f => Int -> Int -> f String
+enumBracketsTail :: Alternative f => Int -> Int -> f String
 enumBracketsTail = enumBracketsTail'
   where
     -- Ensure memoization happens for a specific `f`
