@@ -1,3 +1,7 @@
+0.9.2
+-----
+* use one-liner for the generic implementation of `unfold`
+
 0.9.1
 -----
 * added `Nth` unfolder

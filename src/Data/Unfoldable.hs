@@ -54,6 +54,7 @@ import qualified Data.Tree as T
 
 #ifdef GENERICS
 import GHC.Generics
+import Generics.OneLiner
 #endif
 
 -- | Data structures that can be unfolded.
@@ -91,40 +92,8 @@ class Unfoldable t where
   unfold :: Unfolder f => f a -> f (t a)
 
 #ifdef GENERICS
-
-  default unfold :: (Generic1 t, GUnfold (Rep1 t), Unfolder f) => f a -> f (t a)
-  unfold fa = to1 <$> choose (gunfold fa)
-
-class GUnfold r where
-  gunfold :: Unfolder f => f a -> [f (r a)]
-
-instance GUnfold V1 where
-  gunfold _ = []
-
-instance GUnfold U1 where
-  gunfold _ = [pure U1]
-
-instance GUnfold Par1 where
-  gunfold fa = [Par1 <$> fa]
-
-instance Unfoldable f => GUnfold (Rec1 f) where
-  gunfold fa = [Rec1 <$> unfold fa]
-
-instance (Bounded c, Enum c) => GUnfold (K1 i c) where
-  gunfold _ = [K1 <$> boundedEnum]
-
-instance GUnfold f => GUnfold (M1 i c f) where
-  gunfold fa = map (M1 <$>) (gunfold fa)
-
-instance (GUnfold f, GUnfold g) => GUnfold (f :+: g) where
-  gunfold fa = map (L1 <$>) (gunfold fa) ++ map (R1 <$>) (gunfold fa)
-
-instance (GUnfold f, GUnfold g) => GUnfold (f :*: g) where
-  gunfold fa = liftA2 (:*:) <$> gunfold fa <*> gunfold fa
-
-instance (GUnfold f, GUnfold g) => GUnfold (f :.: g) where
-  gunfold fa = map (Comp1 <$>) (gunfold (choose (gunfold fa)))
-
+  default unfold :: (ADT1 t, Constraints1 t Unfoldable, Unfolder f) => f a -> f (t a)
+  unfold = choose . getCompose . createA1 (For :: For Unfoldable) (Compose . return . unfold . foldr (<|>) empty . getCompose) . Compose . return
 #endif
 
 -- | Unfold the structure, always using @()@ as elements.

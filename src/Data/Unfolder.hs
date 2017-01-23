@@ -120,7 +120,7 @@ chooseMapMonadDefault f as = chooseInt (length as) >>= f . (as !!)
 between :: (Unfolder f, Enum a) => a -> a -> f a
 between lb ub = (\x -> toEnum (x + fromEnum lb)) <$> chooseInt (1 + fromEnum ub - fromEnum lb)
 
--- | If a datatype is also bounded, we choose between all possible values.
+-- | If a datatype is also bounded, we can choose between all possible values.
 --
 -- > boundedEnum = between minBound maxBound
 boundedEnum :: (Unfolder f, Bounded a, Enum a) => f a

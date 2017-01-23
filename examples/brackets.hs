@@ -1,22 +1,22 @@
 -- From https://byorgey.wordpress.com/2016/10/25/adventures-in-enumerating-balanced-brackets/
 import Data.Unfolder
-import Data.MemoTrie (memo2)
+import Data.MemoTrie (memo)
 import Control.Applicative
 
-enumBrackets :: Alternative f => Int -> f String
-enumBrackets n = enumBracketsTail n 0
+enumBrackets :: Unfolder f => f String
+enumBrackets = enumBracketsTail 0
 
-enumBracketsTail :: Alternative f => Int -> Int -> f String
+enumBracketsTail :: Unfolder f => Int -> f String
 enumBracketsTail = enumBracketsTail'
   where
     -- Ensure memoization happens for a specific `f`
-    enumBracketsTail' = memo2 enumBracketsTail''
-    enumBracketsTail'' 0 c = pure (replicate c ')')
-    enumBracketsTail'' n 0 = ('(':) <$> enumBracketsTail' (n-1) 1
-    enumBracketsTail'' n c =
-      ('(':) <$> enumBracketsTail' (n-1) (c+1)
+    enumBracketsTail' = memo enumBracketsTail''
+    enumBracketsTail'' 0 = pure "" <|> choose [('(':) <$> enumBracketsTail' 1]
+    enumBracketsTail'' c =
+      choose [('(':) <$> enumBracketsTail' (c+1)]
       <|>
-      ((')':) <$> enumBracketsTail' n (c-1))
+      ((')':) <$> enumBracketsTail' (c-1))
+
 
 {-
 

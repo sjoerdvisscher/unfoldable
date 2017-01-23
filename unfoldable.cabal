@@ -1,5 +1,5 @@
 Name:                 unfoldable
-Version:              0.9.1
+Version:              0.9.2
 Synopsis:             Class of data structures that can be unfolded.
 Description:          Just as there's a Foldable class, there should also be an Unfoldable class.
                       .
@@ -44,7 +44,9 @@ Library
 
   if impl(ghc >= 7.6)
     cpp-options:   -DGENERICS
-    build-depends: ghc-prim >= 0.2
+    build-depends:
+        ghc-prim     >= 0.2
+      , one-liner    >= 0.7 && < 0.8
 
   Other-extensions:
       GeneralizedNewtypeDeriving
