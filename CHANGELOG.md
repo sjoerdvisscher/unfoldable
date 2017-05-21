@@ -1,3 +1,7 @@
+0.9.3
+-----
+* updated to `one-liner` 0.9
+
 0.9.2
 -----
 * use one-liner for the generic implementation of `unfold`

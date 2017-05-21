@@ -12,7 +12,7 @@
 -----------------------------------------------------------------------------
 {-# LANGUAGE CPP, Safe, TupleSections #-}
 #ifdef GENERICS
-{-# LANGUAGE TypeOperators, DefaultSignatures, FlexibleContexts #-}
+{-# LANGUAGE TypeOperators, DefaultSignatures, FlexibleContexts, TypeApplications #-}
 #endif
 module Data.Unfoldable
   (
@@ -93,7 +93,7 @@ class Unfoldable t where
 
 #ifdef GENERICS
   default unfold :: (ADT1 t, Constraints1 t Unfoldable, Unfolder f) => f a -> f (t a)
-  unfold = choose . getCompose . createA1 (For :: For Unfoldable) (Compose . return . unfold . foldr (<|>) empty . getCompose) . Compose . return
+  unfold = choose . getCompose . createA1 @Unfoldable (Compose . return . unfold . foldr (<|>) empty . getCompose) . Compose . return
 #endif
 
 -- | Unfold the structure, always using @()@ as elements.
