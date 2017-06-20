@@ -1,3 +1,7 @@
+0.9.4
+-----
+* updated to `QuickCheck` 2.10
+
 0.9.3
 -----
 * updated to `one-liner` 0.9
