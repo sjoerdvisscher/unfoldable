@@ -1,3 +1,7 @@
+0.9.5
+-----
+* updated to `QuickCheck` 2.11
+
 0.9.4
 -----
 * updated to `QuickCheck` 2.10
