@@ -1,3 +1,10 @@
+1.0
+---
+* improved generic implementation of `unfold`
+* improved implementation of `arbitraryDefault`
+* lifted `QuickCheck` upper bound to 3.0
+* updated to `containers` 0.6
+
 0.9.6
 -----
 * updated to `one-liner` 1.0

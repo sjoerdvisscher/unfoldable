@@ -85,11 +85,12 @@ import Control.Monad.Trans.State
 import Control.Monad.Trans.Writer
 
 import qualified System.Random as R
-import Test.QuickCheck (Arbitrary(..), Gen, oneof, elements, sized, resize)
+import Test.QuickCheck (Arbitrary(..), Gen, oneof, elements, frequency, sized, resize)
 
 import Data.Monoid (Monoid(..))
 import Data.Maybe (catMaybes)
 import qualified Data.Sequence as S
+
 
 -- | Unfolders provide a way to unfold data structures.
 -- The methods have default implementations in terms of 'Alternative',
@@ -243,8 +244,53 @@ instance (Functor m, Monad m, R.RandomGen g) => MonadPlus (Random g m) where
 instance (Functor m, Monad m, R.RandomGen g) => Unfolder (Random g m) where
   choose = chooseMonadDefault
   chooseMap = chooseMapMonadDefault
-  chooseInt 0 = Random . StateT $ const (fail "Random chooseInt 0")
   chooseInt n = Random . StateT $ return . R.randomR (0, n - 1)
+
+
+-- | A variant of Test.QuickCheck.Gen, with failure
+-- and a count of the number of recursive positions and parameter positions.
+data Arb a = Arb Int Int (Gen (Maybe a))
+
+instance Functor Arb where
+  fmap f (Arb r p g) = Arb r p $ fmap (fmap f) g
+
+instance Applicative Arb where
+  pure = Arb 0 0 . pure . pure
+  Arb r1 p1 ff <*> Arb r2 p2 fx = Arb (r1 + r2) (p1 + p2) $ liftA2 (<*>) ff fx
+
+instance Alternative Arb where
+  empty = Arb 0 0 (pure Nothing)
+  Arb r1 p1 g1 <|> Arb r2 p2 g2 = Arb (r1 + r2) (p1 + p2) $ g1 >>= \a -> g2 >>= \b -> Just <$> elements (catMaybes [a, b])
+
+-- | Limit the depth of the generated data structure by
+-- dividing the given size by the number of recursive positions.
+instance Unfolder Arb where
+  choose as = Arb 1 0 $ sized g
+    where
+      g n = freq $ foldMap f as
+        where
+          (recPosCount, parPosCount) = foldr (\(Arb r p _) (rc, pc) -> (r + rc, p + pc)) (0, 0) as
+          recSize = (n - parPosCount) `div` max 1 recPosCount
+          f (Arb r p gen) = if (r > 0 && recSize < 0) || (n == 0 && r + p > 0) then [] else [(3 + r * recSize, resize (max 0 recSize) gen)]
+          freq [] = pure Nothing
+          freq as = frequency as
+
+arbUnit :: Arbitrary a => Arb a
+arbUnit = Arb 0 1 (Just <$> arbitrary)
+
+
+-- | Variant of 'Data.Functor.Constant' that does multiplication of the constants for @\<*>@ and addition for @\<|>@.
+newtype NumConst a x = NumConst { getNumConst :: a } deriving (Eq, Show)
+instance Functor (NumConst a) where
+  fmap _ (NumConst a) = NumConst a
+instance Num a => Applicative (NumConst a) where
+  pure _ = NumConst 1
+  NumConst a <*> NumConst b = NumConst $ a * b
+instance Num a => Alternative (NumConst a) where
+  empty = NumConst 0
+  NumConst a <|> NumConst b = NumConst $ a + b
+-- | Unfolds to a constant numeric value. Useful for counting shapes.
+instance Num a => Unfolder (NumConst a)
 
 
 data Nth a = Nth
@@ -261,6 +307,7 @@ instance Alternative Nth where
   empty = Nth 0 (const undefined)
   Nth sizeA as <|> Nth sizeB bs = Nth (sizeA + sizeB) $ \n ->
     if n < sizeA then as n else bs (n - sizeA)
+-- | Get the nth value from the sequence of all possible values.
 instance Unfolder Nth where
   chooseInt n = Nth (toInteger n) fromInteger
 
@@ -377,49 +424,3 @@ flattenBFS :: [Maybe [a]] -> Maybe [a]
 flattenBFS ms = case catMaybes ms of
   [] -> Nothing
   ms' -> Just (concat ms')
-
-
--- | A variant of Test.QuickCheck.Gen, with failure
--- and a count of the number of recursive positions.
-data Arb a = Arb Int (Gen (Maybe a))
-
-instance Functor Arb where
-  fmap f (Arb i g) = Arb i $ fmap (fmap f) g
-
-instance Applicative Arb where
-  pure = Arb 0 . pure . pure
-  Arb i1 ff <*> Arb i2 fx = Arb (i1 + i2) $ liftA2 (<*>) ff fx
-
-instance Alternative Arb where
-  empty = Arb 0 (pure Nothing)
-  Arb ia fa <|> Arb ib fb = Arb ((ia + ib + 1) `div` 2) $ oneof [fa, fb]
-
--- | Limit the depth of the generated data structure by
--- dividing the given size by the number of recursive positions.
-instance Unfolder Arb where
-  chooseMap f as = Arb 1 $ sized g
-    where
-      g 0 = pure Nothing
-      g n = flatMapArb ((\(Arb i gen) -> resize (n `div` max i 1) gen) . f) as
-
-flatMapArb :: (a -> Gen (Maybe b)) -> [a] -> Gen (Maybe b)
-flatMapArb f = go [] where
-  go [] [] = pure Nothing
-  go as [] = Just <$> elements as
-  go as (g:gs) = f g >>= \ma -> go (maybe as (:as) ma) gs
-
-arbUnit :: Arbitrary a => Arb a
-arbUnit = Arb 0 (Just <$> arbitrary)
-
--- | Variant of 'Data.Functor.Constant' that does multiplication of the constants for @\<*>@ and addition for @\<|>@.
-newtype NumConst a x = NumConst { getNumConst :: a } deriving (Eq, Show)
-instance Functor (NumConst a) where
-  fmap _ (NumConst a) = NumConst a
-instance Num a => Applicative (NumConst a) where
-  pure _ = NumConst 1
-  NumConst a <*> NumConst b = NumConst $ a * b
-instance Num a => Alternative (NumConst a) where
-  empty = NumConst 0
-  NumConst a <|> NumConst b = NumConst $ a + b
--- | Unfolds to a constant numeric value. Useful for counting shapes.
-instance Num a => Unfolder (NumConst a)

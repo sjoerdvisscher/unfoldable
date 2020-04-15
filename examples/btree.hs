@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFoldable #-}
 import Data.Unfoldable
 import Data.Unfolder
 
@@ -5,7 +6,7 @@ import Data.Maybe
 import System.Random
 
 
-data TB a = LB a | BB (TB (a, a)) deriving Show
+data TB a = LB a | BB (TB (a, a)) deriving (Show, Foldable)
 
 instance Unfoldable TB where
   unfold fa = choose

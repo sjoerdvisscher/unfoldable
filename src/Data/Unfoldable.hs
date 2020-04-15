@@ -93,7 +93,11 @@ class Unfoldable t where
 
 #ifdef GENERICS
   default unfold :: (ADT1 t, Constraints1 t Unfoldable, Unfolder f) => f a -> f (t a)
-  unfold = choose . getCompose . createA1 @Unfoldable (Compose . return . unfold . foldr (<|>) empty . getCompose) . Compose . return
+  unfold = choose . getCompose . createA1 @Unfoldable (Compose . pure . unfold . asum' . getCompose) . Compose . pure
+    where
+      asum' [] = empty
+      asum' [a] = a
+      asum' (a:as) = a <|> asum' as
   {-# INLINE unfold #-}
 #endif
 
@@ -153,8 +157,8 @@ randomDefault = runState . getRandom . unfold . Random . state $ R.random
 
 -- | Provides a QuickCheck generator, can be used as default instance for 'Arbitrary'.
 arbitraryDefault :: (Arbitrary a, Unfoldable t) => Gen (t a)
-arbitraryDefault = let Arb _ gen = unfold arbUnit in
-  fromMaybe (error "Failed to generate a value.") <$> sized (\n -> resize (n + 1) gen)
+arbitraryDefault = let Arb _ _ gen = unfold arbUnit in
+  fromMaybe (error "Failed to generate a value.") <$> gen
 
 instance Unfoldable [] where
   unfold fa = go where

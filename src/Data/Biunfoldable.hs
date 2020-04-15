@@ -11,7 +11,7 @@
 -- Class of data structures with 2 type arguments that can be unfolded.
 -----------------------------------------------------------------------------
 {-# LANGUAGE Safe #-}
-module Data.Biunfoldable 
+module Data.Biunfoldable
   (
 
   -- * Biunfoldable
@@ -26,7 +26,7 @@ module Data.Biunfoldable
   , randomDefault
   , arbitraryDefault
 
-  ) 
+  )
   where
 
 import Control.Applicative
@@ -94,19 +94,19 @@ randomDefault = runState . getRandom $ biunfold (Random . state $ R.random) (Ran
 
 -- | Provides a QuickCheck generator, can be used as default instance for 'Arbitrary'.
 arbitraryDefault :: (Arbitrary a, Arbitrary b, Biunfoldable t) => Gen (t a b)
-arbitraryDefault = let Arb _ gen = biunfold arbUnit arbUnit in 
-  fromMaybe (error "Failed to generate a value.") <$> sized (\n -> resize (n + 1) gen)
+arbitraryDefault = let Arb _ _ gen = biunfold arbUnit arbUnit in
+  fromMaybe (error "Failed to generate a value.") <$> gen
 
 instance Biunfoldable Either where
-  biunfold fa fb = choose 
+  biunfold fa fb = choose
     [ Left <$> fa
     , Right <$> fb
     ]
 
 instance Biunfoldable (,) where
-  biunfold fa fb = choose 
+  biunfold fa fb = choose
     [ (,) <$> fa <*> fb ]
 
 instance Biunfoldable Constant where
-  biunfold fa _ = choose 
+  biunfold fa _ = choose
     [ Constant <$> fa ]
