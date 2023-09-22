@@ -12,3 +12,4 @@ dist-newstyle/
 *.o
 *.p_hi
 *.prof
+stack.yaml*
