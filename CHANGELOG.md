@@ -1,3 +1,7 @@
+1.1
+---
+* Updates for GHC 9.6 through 9.14
+
 1.0
 ---
 * improved generic implementation of `unfold`

@@ -10,10 +10,6 @@
 --
 -- Class of data structures that can be unfolded.
 -----------------------------------------------------------------------------
-{-# LANGUAGE CPP, Safe, TupleSections #-}
-#ifdef GENERICS
-{-# LANGUAGE TypeOperators, DefaultSignatures, FlexibleContexts, TypeApplications #-}
-#endif
 module Data.Unfoldable
   (
 
@@ -52,10 +48,8 @@ import Data.Maybe
 import qualified Data.Sequence as S
 import qualified Data.Tree as T
 
-#ifdef GENERICS
 import GHC.Generics
 import Generics.OneLiner
-#endif
 
 -- | Data structures that can be unfolded.
 --
@@ -91,7 +85,6 @@ class Unfoldable t where
   -- | Given a way to generate elements, return a way to generate structures containing those elements.
   unfold :: Unfolder f => f a -> f (t a)
 
-#ifdef GENERICS
   default unfold :: (ADT1 t, Constraints1 t Unfoldable, Unfolder f) => f a -> f (t a)
   unfold = choose . getCompose . createA1 @Unfoldable (Compose . pure . unfold . asum' . getCompose) . Compose . pure
     where
@@ -99,7 +92,6 @@ class Unfoldable t where
       asum' [a] = a
       asum' (a:as) = a <|> asum' as
   {-# INLINE unfold #-}
-#endif
 
 -- | Unfold the structure, always using @()@ as elements.
 unfold_ :: (Unfoldable t, Unfolder f) => f (t ())

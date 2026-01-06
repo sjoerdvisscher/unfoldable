@@ -1,0 +1,6 @@
+packages: .
+
+allow-newer:
+  , *:template-haskell
+  , indexed-traversable:*
+  , linear-generics:*

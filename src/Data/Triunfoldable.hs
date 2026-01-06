@@ -10,8 +10,7 @@
 --
 -- Class of data structures with 3 type arguments that can be unfolded.
 -----------------------------------------------------------------------------
-{-# LANGUAGE Safe #-}
-module Data.Triunfoldable 
+module Data.Triunfoldable
   (
 
   -- * Triunfoldable
@@ -26,7 +25,7 @@ module Data.Triunfoldable
   , randomDefault
   , arbitraryDefault
 
-  ) 
+  )
   where
 
 import Control.Applicative
@@ -97,7 +96,7 @@ randomDefault = runState . getRandom $ triunfold (Random . state $ R.random) (Ra
 
 -- | Provides a QuickCheck generator, can be used as default instance for 'Arbitrary'.
 arbitraryDefault :: (Arbitrary a, Arbitrary b, Arbitrary c, Triunfoldable t) => Gen (t a b c)
-arbitraryDefault = let Arb _ gen = triunfold arbUnit arbUnit arbUnit in 
+arbitraryDefault = let Arb _ gen = triunfold arbUnit arbUnit arbUnit in
   fromMaybe (error "Failed to generate a value.") <$> sized (\n -> resize (n + 1) gen)
 
 
@@ -105,6 +104,6 @@ curry3 :: ((a,b,c) -> d) -> a -> b -> c -> d
 curry3 f a b c = f (a,b,c)
 
 instance Triunfoldable (,,) where
-  triunfold fa fb fc = choose 
+  triunfold fa fb fc = choose
     [ (,,) <$> fa <*> fb <*> fc ]
 

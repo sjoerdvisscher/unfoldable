@@ -13,17 +13,6 @@
 -- allows the unfolder to do something special for the recursive positions
 -- of the data structure.
 -----------------------------------------------------------------------------
-{-# LANGUAGE
-    GeneralizedNewtypeDeriving
-  , RankNTypes
-  , Trustworthy
-  , CPP
-  #-}
-
-#if !defined(MIN_VERSION_containers)
-#define MIN_VERSION_containers(x,y,z) 0
-#endif
-
 module Data.Unfolder
   (
 
@@ -77,7 +66,6 @@ import Data.Functor.Reverse
 import Control.Applicative.Backwards
 import Control.Applicative.Lift
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.List
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.RWS
 import Control.Monad.Trans.Reader
@@ -191,14 +179,6 @@ instance Unfolder f => Unfolder (Lift f)
 instance (Functor m, Monad m, Monoid e) => Unfolder (ExceptT e m)
 
 -- | Derived instance.
-instance Applicative f => Unfolder (ListT f) where
-  {-# INLINABLE chooseMap #-}
-  chooseMap f = ListT . foldr appRun (pure [])
-    where
-      appRun x ys = (++) <$> runListT (f x) <*> ys
-  chooseInt n = ListT $ pure [0 .. n - 1]
-
--- | Derived instance.
 instance (Functor m, Monad m) => Unfolder (MaybeT m) where
   chooseMap _ [] = MaybeT (return Nothing)
   chooseMap f (a : as) = MaybeT $ do
@@ -227,10 +207,7 @@ instance (Monoid w, Unfolder m) => Unfolder (WriterT w m) where
 
 -- | Don't choose but return all items.
 instance Unfolder S.Seq where
-#if MIN_VERSION_containers(0,5,6)
   chooseInt n = S.fromFunction n id
-#endif
-
 
 newtype Random g m a = Random { getRandom :: StateT g m a }
   deriving (Functor, Applicative, Monad)

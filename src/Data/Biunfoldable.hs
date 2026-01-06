@@ -10,7 +10,6 @@
 --
 -- Class of data structures with 2 type arguments that can be unfolded.
 -----------------------------------------------------------------------------
-{-# LANGUAGE Safe #-}
 module Data.Biunfoldable
   (
 
